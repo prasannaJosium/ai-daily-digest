@@ -1,38 +1,69 @@
 {
-  "title": "Jev Daily",
-  "topic": "TypeSafe AI · Jev · System One models",
-  "relevance": "\\bjev\\b|typesafe(?:\\.ai| ai)|system[- ]one model",
-  "window_days": 30,
-  "title_strip": "\\s+[-|]\\s+TypeSafe AI Blog$",
+  "title": "AI Daily",
+  "tagline": "LLMs, agents, launches and new ideas, ranked by buzz across platforms",
+  "window_days": 14,
+  "stories_per_day": 80,
 
   "sources": [
-    {"name": "TypeSafe blog", "kind": "sitemap", "url": "https://typesafe.ai/sitemap.xml", "match": "/blog/", "official": true},
-    {"name": "TypeSafe docs", "kind": "sitemap", "url": "https://docs.typesafe.ai/sitemap.xml", "official": true},
-    {"name": "TypeSafe docs", "kind": "page", "url": "https://docs.typesafe.ai/llms.txt", "title": "Docs index (llms.txt)", "official": true, "reference": true},
-    {"name": "TypeSafe evals", "kind": "page", "url": "https://evals.typesafe.ai/", "title": "TypeSafe workflow evals", "official": true, "reference": true},
-    {"name": "TypeSafe blog", "kind": "page", "url": "https://typesafe.ai/blog/introducing-system-one-models-and-jev", "official": true},
+    {"name": "Hacker News", "kind": "hn", "min_points": 15, "days": 3, "backfill_days": 14},
+    {"name": "Reddit", "kind": "reddit", "limit": 100,
+     "subs": ["LocalLLaMA", "MachineLearning", "OpenAI", "ClaudeAI", "artificial", "singularity", "AI_Agents", "LLMDevs"],
+     "dedicated_subs": ["LocalLLaMA", "MachineLearning", "ClaudeAI", "AI_Agents", "LLMDevs"]},
+    {"name": "Lobsters", "kind": "lobsters", "tags": ["ai", "vibecoding"]},
+    {"name": "HF Papers", "kind": "hf_papers", "limit": 50},
+    {"name": "HF trending", "kind": "hf_models", "limit": 40, "max_age_days": 21},
+    {"name": "GitHub", "kind": "github", "days": 7, "min_stars": 40, "per_topic": 15,
+     "topics": ["llm", "ai-agents", "agents", "mcp", "rag", "large-language-models", "agentic-ai"]},
 
-    {"name": "TechCrunch", "kind": "page", "url": "https://techcrunch.com/2026/09/18/a-new-kind-of-ai-model-from-a-chatgpt-inventor-is-thrilling-developers/"},
-    {"name": "SiliconANGLE", "kind": "page", "url": "https://siliconangle.com/2026/09/16/typesafe-ai-exits-stealth-with-40m-to-build-ai-for-use-by-software/"},
-    {"name": "DataCamp", "kind": "page", "url": "https://www.datacamp.com/blog/system-one-models-jev"},
-    {"name": "Arize", "kind": "page", "url": "https://arize.com/blog/typesafe-jev-llm-judge/"},
-    {"name": "Lindfors", "kind": "page", "url": "https://lindfors.no/blog/a-first-look-at-typesafes-jev/"},
-    {"name": "primeline", "kind": "page", "url": "https://primeline.cc/blog/typesafe-jev-pre-registered-test"},
-    {"name": "XenoSpectrum", "kind": "page", "url": "https://xenospectrum.com/en/jev-typesafe-bert-classifier-decomposition/"},
-    {"name": "backnotprop", "kind": "links", "url": "https://backnotprop.com/", "match": "/blog/"},
-    {"name": "mini-jev", "kind": "github", "repos": ["r-ms/mini-jev", "UpHash-Network/mini-jev", "deep-diver/mini-jev", "RichardoMrMu/jev-mini"]},
-    {"name": "Southbridge", "kind": "page", "url": "https://www.southbridge.ai/blog/jev-entity-resolution", "title": "Using system-one models inside high-throughput data pipelines", "published": "2026-09-20T00:00:00Z"},
-    {"name": "Von", "kind": "github", "repos": ["wfzyx/von"]}
+    {"name": "OpenAI", "kind": "feed", "type": "official", "url": "https://openai.com/news/rss.xml"},
+    {"name": "Anthropic", "kind": "sitemap", "type": "official", "url": "https://www.anthropic.com/sitemap.xml",
+     "match": "anthropic\\.com/(news|research|engineering)/", "title_strip": "\\s*[\\\\|-]\\s*Anthropic$"},
+    {"name": "Mistral", "kind": "sitemap", "type": "official", "url": "https://mistral.ai/sitemap-0.xml",
+     "match": "mistral\\.ai/news/[^/]+", "title_strip": "\\s*[|-]\\s*Mistral AI$"},
+    {"name": "Google Research", "kind": "feed", "type": "official", "url": "https://research.google/blog/rss/"},
+    {"name": "Hugging Face", "kind": "feed", "type": "official", "url": "https://huggingface.co/blog/feed.xml"},
+    {"name": "Qwen", "kind": "feed", "type": "official", "url": "https://qwenlm.github.io/blog/index.xml"},
+    {"name": "Microsoft Research", "kind": "feed", "type": "official", "dedicated": false,
+     "url": "https://www.microsoft.com/en-us/research/feed/"},
+    {"name": "NVIDIA", "kind": "feed", "type": "official", "dedicated": false, "url": "https://blogs.nvidia.com/feed/"},
+    {"name": "AWS ML", "kind": "feed", "type": "official", "url": "https://aws.amazon.com/blogs/machine-learning/feed/"},
+
+    {"name": "Techmeme", "kind": "feed", "type": "aggregator", "dedicated": false, "link_from_description": true,
+     "url": "https://www.techmeme.com/feed.xml"},
+    {"name": "TechCrunch", "kind": "feed", "type": "press", "url": "https://techcrunch.com/category/artificial-intelligence/feed/"},
+    {"name": "The Verge", "kind": "feed", "type": "press", "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"},
+    {"name": "Ars Technica", "kind": "feed", "type": "press", "url": "https://arstechnica.com/ai/feed/"},
+    {"name": "The Decoder", "kind": "feed", "type": "press", "url": "https://the-decoder.com/feed/"},
+    {"name": "Simon Willison", "kind": "feed", "type": "writer", "dedicated": false, "url": "https://simonwillison.net/atom/everything/"},
+    {"name": "Latent Space", "kind": "feed", "type": "writer", "url": "https://www.latent.space/feed"},
+    {"name": "Interconnects", "kind": "feed", "type": "writer", "url": "https://www.interconnects.ai/feed"},
+    {"name": "Import AI", "kind": "feed", "type": "writer", "url": "https://importai.substack.com/feed"},
+
+    {"name": "Google News", "kind": "gnews", "days": 3, "per_query": 12,
+     "queries": ["Google DeepMind Gemini", "Meta AI Llama", "xAI Grok", "DeepSeek model", "OpenAI launches",
+                 "Anthropic Claude", "AI agents launch", "open-source LLM release"]}
   ],
 
-  "discovery": {
-    "hn_queries": ["jev", "typesafe"],
-    "reddit_queries": ["typesafe OR jev"],
-    "google_news_queries": ["TypeSafe Jev", "\"System One\" TypeSafe"],
-    "github_queries": ["jev typesafe", "jev system one"],
-    "devto_tags": ["jev", "typesafe"],
-    "lobsters_tags": ["ai", "ml", "programming"],
-    "hn_threads_with_comments": 5,
-    "hn_comments_per_thread": 8
-  }
+  "comments": {"per_thread": 4, "hn_threads": 20, "reddit_threads": 4},
+
+  "relevance": "(?-i:\\bA\\.?I\\b)|\\bLLMs?\\b|\\bGPT[-\\w.]*|\\bChatGPT\\b|\\bClaude\\b|\\bGemini\\b|\\bLlama\\b|\\bMistral\\b|\\bQwen\\b|\\bDeepSeek\\b|\\bGrok\\b|\\bKimi\\b|\\bOpenAI\\b|\\bAnthropic\\b|\\bDeepMind\\b|\\bxAI\\b|\\bHugging ?Face\\b|\\b(?:AI|coding|autonomous|software|web|browser|research) agents?\\b|\\bagentic\\b|\\bmulti-agent\\b|\\bMCP\\b|\\bmodel context protocol\\b|\\bRAG\\b|\\bretrieval[- ]augmented\\b|\\btransformers?\\b|\\bdiffusion models?\\b|\\bfine[- ]?tun\\w*|\\bembeddings?\\b|\\bneural (?:net\\w*|network)\\b|\\bmachine learning\\b|\\bdeep learning\\b|\\bchatbots?\\b|\\bcopilot\\b|\\bprompt(?:s|ing)?\\b|\\breasoning models?\\b|\\bfoundation models?\\b|\\blanguage models?\\b|\\bmultimodal\\b|\\bvLLM\\b|\\bllama\\.cpp\\b|\\bollama\\b|\\bLangChain\\b|\\bLlamaIndex\\b|\\bDSPy\\b|\\bCursor\\b|\\bClaude Code\\b|\\bCodex\\b|\\bvibe[- ]cod\\w*|\\bopen[- ]weights?\\b|\\bGPUs?\\b|\\bNvidia\\b|\\bAGI\\b|\\binference\\b|\\btokens? per\\b|\\bcontext window\\b|\\bSLMs?\\b|\\bgenerative\\b|\\bgenAI\\b|\\bartificial intelligence\\b|\\bsuperintelligence\\b|\\bstable diffusion\\b|\\bMidjourney\\b|\\bSora\\b|\\bVeo\\b",
+  "noise": "\\bstocks?\\b(?! ?(?:photo|image))|\\bshares? (?:rose|fell|jump|drop|soar|slump|plunge)\\w*|\\bprice target\\b|\\bbuy rating\\b|\\bcrypto(?:currenc\\w*)?\\b|\\bbitcoin\\b|\\bmemecoin\\b|\\bNFTs?\\b|\\bdeals? (?:on|of the day)\\b|\\bcoupon\\b|\\bhoroscope\\b|\\bbest .{0,40} to buy\\b|\\bPrime Day\\b|\\bBlack Friday\\b",
+
+  "topics": {
+    "launches": "\\blaunch\\w*|\\breleas\\w*|\\bintroduc\\w*|\\bannounc\\w*|\\bunveil\\w*|\\bnow available\\b|\\bgenerally available\\b|\\bships?\\b|\\brolls? out\\b|\\bdebuts?\\b|\\bpreview\\b|\\bv\\d+(?:\\.\\d+)+\\b",
+    "llms": "\\bLLMs?\\b|\\blanguage models?\\b|\\bGPT[-\\w.]*|\\bClaude\\b|\\bGemini\\b|\\bLlama\\b|\\bQwen\\b|\\bDeepSeek\\b|\\bMistral\\b|\\bGrok\\b|\\bKimi\\b|\\breasoning\\b|\\bcontext window\\b|\\btokens?\\b|\\bprompt\\w*|\\bfine[- ]?tun\\w*|\\bpre-?train\\w*|\\bpost-?train\\w*|\\binference\\b|\\bhallucinat\\w*",
+    "agents": "\\bagents?\\b|\\bagentic\\b|\\bmulti-agent\\b|\\bMCP\\b|\\bmodel context protocol\\b|\\btool[- ](?:use|calling)\\b|\\bfunction calling\\b|\\bcomputer[- ]use\\b|\\bbrowser use\\b|\\bClaude Code\\b|\\bCodex\\b|\\bCursor\\b|\\bDevin\\b|\\bcoding assistants?\\b|\\bautonomous\\b|\\bworkflows?\\b|\\bA2A\\b",
+    "research": "\\bpapers?\\b|\\barxiv\\b|\\bstudy\\b|\\bresearch\\w*|\\bbenchmarks?\\b|\\bevals?\\b|\\bevaluation\\b|\\bwe (?:show|propose|present|introduce)\\b|\\binterpretability\\b|\\bscaling laws?\\b|\\bablation\\b|\\bSOTA\\b|\\bstate[- ]of[- ]the[- ]art\\b",
+    "tools": "\\bframeworks?\\b|\\blibrar(?:y|ies)\\b|\\bSDKs?\\b|\\bAPIs?\\b|\\bCLI\\b|\\btoolkit\\b|\\bLangChain\\b|\\bLlamaIndex\\b|\\bvLLM\\b|\\bollama\\b|\\bllama\\.cpp\\b|\\bDSPy\\b|\\bPyTorch\\b|\\bJAX\\b|\\bRAG\\b|\\bvector (?:db|database|store)\\b|\\bShow HN\\b|\\bplugin\\b|\\bextension\\b|\\bIDE\\b",
+    "open": "\\bopen[- ]weights?\\b|\\bopen[- ]source\\w*\\b|\\bApache[- ]2\\.0\\b|\\bMIT[- ]licen[sc]e\\b|\\bGGUF\\b|\\bHugging ?Face\\b|\\blocal(?:ly)?\\b|\\bself-host\\w*|\\bon-device\\b|\\bLocalLLaMA\\b",
+    "industry": "\\braises?\\b|\\bfunding\\b|\\bSeries [A-F]\\b|\\bvaluation\\b|\\bacqui\\w*|\\bIPO\\b|\\blayoffs?\\b|\\brevenue\\b|\\bpartnership\\b|\\bhires?\\b|\\bCEO\\b|\\bstartups?\\b|\\bdata ?cent(?:er|re)s?\\b|\\bcompute deal\\b|\\bbillion\\b|\\bpricing\\b|\\benterprise\\b",
+    "policy": "\\bregulat\\w*|\\blaws?\\b|\\blegislat\\w*|\\bpolicy\\b|\\bsafety\\b|\\blawsuits?\\b|\\bsu(?:es|ed|ing)\\b|\\bcopyright\\b|\\bAI Act\\b|\\bbans?\\b|\\bcourt\\b|\\bcongress\\b|\\bsenate\\b|\\bjailbreak\\w*|\\bmisuse\\b|\\balignment\\b|\\bprivacy\\b|\\bdeepfakes?\\b|\\bsecurity\\b|\\bprompt injection\\b"
+  },
+  "platform_topics": {"hf_papers": ["research"], "github": ["tools", "open"], "hf_models": ["open", "launches"]},
+
+  "type_weight": {"official": 1.0, "aggregator": 0.5, "press": 0.45, "writer": 0.45, "gnews": 0.3},
+  "platform_weight": {"hn": 1.0, "reddit": 0.8, "lobsters": 0.75, "hf_papers": 0.8, "hf_models": 0.8, "github": 0.8},
+  "grace_hours": 12,
+  "half_life_hours": 24,
+  "cross_platform_boost": 0.5
 }

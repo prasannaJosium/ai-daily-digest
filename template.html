@@ -3,348 +3,278 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>__TITLE__</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #fbfcfd; --ink: #1a2233; --muted: #677083; --faint: #9aa2b1; --line: #e3e6ec; --hover: #f1f3f7;
-  --link: #2448c9; --visited: #6a4bb8;
-  --pos: #1f8a70; --neg: #c2415d; --mix: #b7791f; --neu: #8a93a3; --new: #2448c9;
-  --sans: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --bg: #f6f6ef; --page: #f6f6ef; --bar: #ff6600; --bar-ink: #000; --ink: #000; --sub: #828282;
+  --link-visited: #828282; --rule: #ff6600; --comment-bg: #efefe6; --mark: #ff6600; --input: #fff; --line: #dcdcd0;
+  --font: Verdana, Geneva, sans-serif;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #12161f; --ink: #e6e9ef; --muted: #9aa3b4; --faint: #6b7385; --line: #262d3a; --hover: #1a202b;
-    --link: #8fb0ff; --visited: #b9a3f0; --pos: #4cc9a4; --neg: #f07891; --mix: #e3b04b; --neu: #8a93a3; --new: #8fb0ff;
+    --bg: #1a1a18; --page: #1a1a18; --bar: #e05a00; --bar-ink: #111; --ink: #e8e6df; --sub: #9a978d;
+    --link-visited: #8a877e; --rule: #e05a00; --comment-bg: #23231f; --mark: #ff8a3d; --input: #26261f; --line: #34342d;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #12161f; --ink: #e6e9ef; --muted: #9aa3b4; --faint: #6b7385; --line: #262d3a; --hover: #1a202b;
-  --link: #8fb0ff; --visited: #b9a3f0; --pos: #4cc9a4; --neg: #f07891; --mix: #e3b04b; --neu: #8a93a3; --new: #8fb0ff;
+  --bg: #1a1a18; --page: #1a1a18; --bar: #e05a00; --bar-ink: #111; --ink: #e8e6df; --sub: #9a978d;
+  --link-visited: #8a877e; --rule: #e05a00; --comment-bg: #23231f; --mark: #ff8a3d; --input: #26261f; --line: #34342d;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+html { background: var(--bg); }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 13.5px/1.35 var(--font); }
 a { color: inherit; text-decoration: none; }
-a:hover { text-decoration: underline; text-underline-offset: 2px; }
-:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; border-radius: 3px; }
-.wrap { max-width: 780px; margin: 0 auto; padding: 28px 16px 64px; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--mark); outline-offset: 1px; }
+.wrap { max-width: 1080px; margin: 8px auto 40px; background: var(--page); }
 
-header h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
-header .sub { color: var(--muted); margin: 2px 0 0; }
+/* top bar */
+header { background: var(--bar); color: var(--bar-ink); display: flex; align-items: center; gap: 4px 10px;
+  padding: 3px 6px; flex-wrap: wrap; }
+.logo { display: inline-grid; place-items: center; width: 20px; height: 20px; border: 1px solid #fff;
+  color: #fff; font-weight: bold; font-size: 12px; flex: none; }
+.brand { font-weight: bold; margin-right: 4px; white-space: nowrap; }
+nav { display: flex; flex-wrap: wrap; align-items: center; row-gap: 2px; }
+nav a { white-space: nowrap; }
+nav a[aria-current="page"] { color: #fff; }
+nav .sep { padding: 0 4px; }
+.right { margin-left: auto; font-size: 12px; white-space: nowrap; display: flex; gap: 10px; align-items: center; }
+.right button { font: inherit; background: none; border: 0; color: inherit; cursor: pointer; padding: 0; }
 
-/* The readout: today's reaction mix, shaped like a Jev Choice answer. */
-.readout { margin: 22px 0 8px; font: 13px/1.6 var(--mono); border-left: 2px solid var(--line); padding: 2px 0 2px 14px; }
-.readout .q { color: var(--muted); }
-.readout .q b { color: var(--ink); font-weight: 500; }
-.dist { display: grid; grid-template-columns: 6.5em 1fr 3.2em; gap: 2px 12px; align-items: center; margin-top: 6px; max-width: 520px; }
-.dist .bar { height: 8px; background: var(--hover); border-radius: 4px; overflow: hidden; }
-.dist .bar i { display: block; height: 100%; border-radius: 4px; width: 0; transition: width .7s cubic-bezier(.2,.7,.2,1); }
-.dist .p { text-align: right; color: var(--muted); }
-.dist .lbl.win { color: var(--ink); font-weight: 500; }
-.readout .foot { color: var(--faint); margin-top: 6px; }
+/* list */
+.intro { color: var(--sub); font-size: 12px; padding: 10px 10px 2px 38px; }
+.intro b { color: var(--ink); font-weight: normal; }
+.daynav { padding: 10px 10px 2px 38px; font-size: 12px; color: var(--sub); }
+.daynav b { color: var(--ink); }
+.daynav a { color: var(--ink); }
+ol.stories { list-style: none; margin: 0; padding: 8px 10px 0 0; }
+ol.stories > li { display: grid; grid-template-columns: 32px 1fr; padding: 0 0 7px; }
+.n { color: var(--sub); text-align: right; padding-right: 6px; }
+.title { font-size: 13.5px; }
+.title a.t:visited { color: var(--link-visited); }
+.title .d { color: var(--sub); font-size: 11px; margin-left: 3px; }
+.title .d:hover { text-decoration: underline; }
+.badge { font-size: 10px; color: var(--mark); border: 1px solid currentColor; border-radius: 2px; padding: 0 3px;
+  margin-left: 5px; vertical-align: 1px; white-space: nowrap; }
+.sub { color: var(--sub); font-size: 11px; margin-top: 1px; }
+.sub a:hover { text-decoration: underline; }
+.sub .pipe { padding: 0 3px; }
+.sub .hot { color: var(--ink); }
+.sub button.discuss { font: inherit; background: none; border: 0; padding: 0; color: inherit; cursor: pointer; }
+.sub button.discuss:hover { text-decoration: underline; }
+.comments { margin: 6px 0 4px; padding: 6px 10px; background: var(--comment-bg); border-left: 2px solid var(--line);
+  font-size: 12px; max-width: 760px; }
+.comments[hidden] { display: none; }
+.comments .c { margin: 0 0 8px; }
+.comments .c:last-child { margin-bottom: 0; }
+.comments .who { color: var(--sub); font-size: 11px; }
+.comments p { margin: 2px 0 0; white-space: pre-line; overflow-wrap: anywhere; }
+.more { padding: 4px 0 12px 38px; }
+.more a { color: var(--ink); }
+.empty { padding: 24px 38px; color: var(--sub); }
 
-nav.tabs { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 26px 0 0; border-bottom: 1px solid var(--line); }
-nav.tabs button { font: inherit; background: none; border: 0; color: var(--muted); padding: 8px 0 10px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
-nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 500; }
-nav.tabs .n { color: var(--faint); font-size: 12px; margin-left: 3px; }
+/* footer */
+footer { border-top: 2px solid var(--rule); margin: 18px 0 0; padding: 12px 10px; text-align: center; font-size: 11.5px;
+  color: var(--sub); }
+footer label { color: var(--sub); }
+footer input { font: inherit; font-size: 12px; background: var(--input); color: var(--ink); border: 1px solid var(--line);
+  padding: 2px 4px; width: 220px; max-width: 70vw; }
+footer .health { margin-top: 10px; line-height: 1.6; }
+footer .bad { color: #c2410c; }
+footer details { margin-top: 6px; display: inline-block; text-align: left; }
+footer summary { cursor: pointer; text-align: center; list-style: none; }
+footer summary::-webkit-details-marker { display: none; }
+footer summary:hover { text-decoration: underline; }
+footer table { border-collapse: collapse; margin-top: 6px; }
+footer td { padding: 1px 8px; }
+footer td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
-.filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 12px 0; color: var(--muted); font-size: 13px; }
-.filters[hidden] { display: none; }
-.filters select, .filters input { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
-.filters input { flex: 1 1 180px; min-width: 0; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { font: inherit; font-size: 12.5px; border: 1px solid var(--line); background: none; color: var(--muted); border-radius: 999px; padding: 2px 10px; cursor: pointer; }
-.chip[aria-pressed="true"] { color: var(--ink); border-color: var(--ink); }
-
-ol.list { list-style: none; margin: 0; padding: 0; counter-reset: r; }
-ol.list > li { display: grid; grid-template-columns: 2.2em 3.2em 1fr; gap: 0 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
-ol.list > li::before { counter-increment: r; content: counter(r) "."; color: var(--faint); text-align: right; font-size: 13px; padding-top: 1px; }
-.pts { text-align: right; font-size: 13px; color: var(--muted); padding-top: 1px; font-variant-numeric: tabular-nums; }
-.pts b { display: block; color: var(--ink); font-weight: 500; font-size: 14px; }
-.t { font-weight: 500; }
-.t a:visited { color: var(--visited); }
-.dom { color: var(--faint); font-size: 13px; margin-left: 4px; font-weight: 400; }
-.meta { color: var(--muted); font-size: 13px; margin-top: 2px; display: flex; flex-wrap: wrap; gap: 0 12px; }
-.meta a { color: var(--muted); }
-.desc { color: var(--muted); font-size: 14px; margin-top: 4px; max-width: 68ch; }
-.flag { font-size: 11.5px; font-weight: 600; padding: 0 6px; border-radius: 4px; margin-left: 6px; vertical-align: 1px; }
-.flag.new { color: var(--new); border: 1px solid currentColor; }
-.flag.upd { color: var(--mix); border: 1px solid currentColor; }
-.flag.off { color: var(--muted); border: 1px solid var(--line); font-weight: 500; }
-
-/* reactions */
-ol.list > li.rx { grid-template-columns: 2.2em 1fr; }
-.quote { border-left: 3px solid var(--neu); padding: 1px 0 1px 12px; max-width: 70ch; }
-.quote.positive { border-color: var(--pos); } .quote.skeptical { border-color: var(--neg); } .quote.mixed { border-color: var(--mix); }
-.quote p { margin: 0; white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-.quote.open p { -webkit-line-clamp: unset; display: block; }
-.quote .more { font: inherit; font-size: 13px; background: none; border: 0; padding: 0; color: var(--link); cursor: pointer; margin-top: 2px; }
-.tone { font-size: 12.5px; }
-.tone.positive { color: var(--pos); } .tone.skeptical { color: var(--neg); } .tone.mixed { color: var(--mix); } .tone.neutral { color: var(--neu); }
-
-/* sources */
-table.src { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
-table.src th { text-align: left; font-weight: 500; color: var(--muted); font-size: 13px; padding: 6px 8px 6px 0; border-bottom: 1px solid var(--line); }
-table.src td { padding: 8px 8px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
-table.src td.num { text-align: right; font-variant-numeric: tabular-nums; }
-.ok { color: var(--pos); } .err { color: var(--neg); } .dim { color: var(--faint); }
-
-.empty { padding: 40px 0; color: var(--muted); }
-footer { margin-top: 36px; color: var(--faint); font-size: 13px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-footer button { font: inherit; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0; }
-
-@media (max-width: 560px) {
-  ol.list > li { grid-template-columns: 2.6em 1fr; }
-  ol.list > li::before { display: none; }
-  ol.list > li.rx { grid-template-columns: 1fr; }
-  .dist { grid-template-columns: 6em 1fr 3em; }
-  table.src .hide-sm { display: none; }
+@media (max-width: 750px) {
+  .wrap { margin: 0; }
+  header { padding: 6px 16px; }
+  .right { margin-left: 0; width: 100%; }
+  ol.stories { padding-right: 16px; }
+  ol.stories > li { grid-template-columns: 36px 1fr; padding-bottom: 10px; }
+  .title { font-size: 15px; }
+  .sub { font-size: 12px; margin-top: 3px; }
+  .intro, .daynav, .more, .empty { padding-left: 36px; padding-right: 16px; }
+  footer { padding: 12px 16px; }
 }
-@media (prefers-reduced-motion: reduce) { .dist .bar i { transition: none; } }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1 id="title"></h1>
-    <p class="sub" id="sub"></p>
+    <span class="logo" aria-hidden="true">A</span>
+    <a class="brand" href="#top" id="brand">AI Daily</a>
+    <nav id="nav" aria-label="Views"></nav>
+    <span class="right"><span id="updated"></span><button id="theme" type="button" aria-label="Toggle dark mode">◐</button></span>
   </header>
-
-  <section class="readout" id="readout" aria-label="Reaction mix"></section>
-
-  <nav class="tabs" role="tablist" id="tabs"></nav>
-  <div class="filters" id="filters">
-    <label>Period
-      <select id="period">
-        <option value="1">Last 24 hours</option>
-        <option value="3">Last 3 days</option>
-        <option value="7" selected>Last 7 days</option>
-        <option value="30">Last 30 days</option>
-        <option value="0">Everything</option>
-      </select>
-    </label>
-    <div class="chips" id="chips"></div>
-    <input id="q" type="search" placeholder="Filter by keyword" aria-label="Filter by keyword">
-  </div>
   <main id="main"></main>
-
   <footer>
-    <span id="gen"></span>
-    <button id="theme" type="button">Switch theme</button>
+    <label>Search: <input id="q" type="search" autocomplete="off" placeholder="titles, sites, sources"></label>
+    <div class="health" id="health"></div>
   </footer>
 </div>
 
 <script>
-const D = /*__DATA__*/null;
-const GEN = new Date(D.generated);
-const HOUR = 3600e3;
-const PLATFORM = { web: "Web", gnews: "News", hn: "Hacker News", reddit: "Reddit", github: "GitHub", devto: "DEV", lobsters: "Lobsters" };
-const TONES = ["positive", "skeptical", "mixed", "neutral"];
+const DATA = /*__DATA__*/null;
+const PER_PAGE = 30;
+const TOPIC_LABEL = { launches: "launches", llms: "llms", agents: "agents", research: "research", tools: "tools",
+  open: "open source", industry: "industry", policy: "policy" };
+const PLATFORM = { hn: "HN", reddit: "Reddit", lobsters: "Lobsters", hf_papers: "HF Papers", hf_models: "HF",
+  github: "GitHub", web: "web", gnews: "news" };
 
-const store = {
-  get(k, d) { try { return localStorage.getItem("jevdaily:" + k) ?? d; } catch { return d; } },
-  set(k, v) { try { localStorage.setItem("jevdaily:" + k, v); } catch {} },
-};
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const stories = DATA.stories.map((s) => ({ ...s, t: new Date(s.published) }));
+const generated = new Date(DATA.generated);
 
-const state = { tab: store.get("tab", "front"), period: +store.get("period", 7), q: "", platforms: new Set(), tones: new Set() };
-
-const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const when = i => new Date(i.published || i.first_seen);
-const dom = u => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
 function ago(d) {
-  const h = (GEN - d) / HOUR;
-  if (h < 1) return Math.max(1, Math.round(h * 60)) + "m ago";
-  if (h < 24) return Math.round(h) + "h ago";
+  const m = Math.max(1, Math.round((generated - d) / 60000));
+  if (m < 60) return `${m} minute${m === 1 ? "" : "s"} ago`;
+  const h = Math.round(m / 60);
+  if (h < 36) return `${h} hour${h === 1 ? "" : "s"} ago`;
   const days = Math.round(h / 24);
-  return days < 45 ? days + "d ago" : d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return `${days} day${days === 1 ? "" : "s"} ago`;
 }
-// New = published in the last day, or first spotted in the last day (but not by the very first run,
-// which saw the whole backlog at once).
-const isNew = i => (i.published ? (GEN - new Date(i.published)) < 26 * HOUR
-  : (GEN - new Date(i.first_seen)) < 26 * HOUR && i.first_seen !== D.first_run);
-const isUpd = i => i.updated_at && i.kind !== "repo" && (GEN - new Date(i.updated_at)) < 26 * HOUR && !isNew(i);
+const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const dayLabel = (k) => new Date(k + "T12:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 
-// HN-style gravity so fresh, discussed items rise; official posts get a floor.
-function rank(i) {
-  const pts = (i.score || 0) + (i.comments || 0) / 2 + (i.official ? 20 : 3);
-  const h = i.published ? Math.max(0, (GEN - when(i)) / HOUR) : 96;
-  return pts / Math.pow(h + 2, 1.2);
-}
-
-const TABS = [
-  { id: "front", label: "Front page", pick: i => i.kind === "news" },
-  { id: "reactions", label: "Reactions", pick: i => i.kind === "reaction" },
-  { id: "official", label: "TypeSafe", pick: i => i.official },
-  { id: "repos", label: "Repos", pick: i => i.kind === "repo" },
-  { id: "sources", label: "Sources" },
-];
-
-function inPeriod(i) {
-  if (!state.period) return true;
-  const cut = GEN - state.period * 24 * HOUR;
-  return when(i) >= cut || new Date(i.first_seen) >= cut || (i.updated_at && new Date(i.updated_at) >= cut);
-}
-function matchQ(i) {
-  if (!state.q) return true;
-  const hay = [i.title, i.text, i.source, i.author, i.url].join(" ").toLowerCase();
-  return state.q.toLowerCase().split(/\s+/).every(w => hay.includes(w));
-}
-function visible(tab) {
-  return D.items.filter(i => tab.pick(i) && inPeriod(i) && matchQ(i)
-    && (!state.platforms.size || state.platforms.has(i.platform))
-    && (!state.tones.size || state.tones.has(i.tone)));
-}
-
-function renderHeader() {
-  document.title = D.title;
-  document.getElementById("title").textContent = D.title;
-  const day = GEN.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
-  document.getElementById("sub").textContent = `${D.topic}. Updated ${day}.`;
-  document.getElementById("gen").textContent =
-    `Collected ${GEN.toLocaleString()} from ${D.sources.length} tracked sources and 6 discovery feeds.`;
-}
-
-function renderReadout() {
-  const cut = GEN - 7 * 24 * HOUR;
-  const rx = D.items.filter(i => i.kind === "reaction" && when(i) >= cut);
-  const n = rx.length || 1;
-  const p = Object.fromEntries(TONES.map(t => [t, rx.filter(i => i.tone === t).length / n]));
-  const top = TONES.slice(0, 3).reduce((a, b) => (p[b] > p[a] ? b : a));
-  const fresh = D.items.filter(i => i.kind !== "reaction" && isNew(i)).length;
-  const freshRx = D.items.filter(i => i.kind === "reaction" && isNew(i)).length;
-  const color = { positive: "var(--pos)", skeptical: "var(--neg)", mixed: "var(--mix)", neutral: "var(--neu)" };
-  document.getElementById("readout").innerHTML = `
-    <div class="q">choice(<b>"How are people reacting this week?"</b>)</div>
-    <div class="dist">${TONES.map(t => `
-      <span class="lbl ${t === top ? "win" : ""}">${t}</span>
-      <span class="bar"><i data-w="${(p[t] * 100).toFixed(1)}" style="background:${color[t]}"></i></span>
-      <span class="p">${p[t].toFixed(2)}</span>`).join("")}
-    </div>
-    <div class="foot">${rx.length} reactions this week, ${freshRx} of them new today. ${fresh} new stories today.<br>Tone comes from a keyword heuristic, not from Jev.</div>`;
-  requestAnimationFrame(() => document.querySelectorAll(".dist i").forEach(el => (el.style.width = el.dataset.w + "%")));
-}
-
-function renderTabs() {
-  document.getElementById("tabs").innerHTML = TABS.map(t => {
-    const n = t.pick ? D.items.filter(i => t.pick(i) && inPeriod(i)).length : D.sources.length;
-    return `<button role="tab" aria-selected="${t.id === state.tab}" data-tab="${t.id}">${t.label}<span class="n">${n}</span></button>`;
-  }).join("");
-}
-
-function renderChips() {
-  const tab = TABS.find(t => t.id === state.tab);
-  const el = document.getElementById("chips");
-  const filters = document.getElementById("filters");
-  filters.hidden = !tab.pick;
-  if (!tab.pick) return;
-  const base = D.items.filter(i => tab.pick(i) && inPeriod(i));
-  const plats = [...new Set(base.map(i => i.platform))];
-  let html = plats.length > 1 ? plats.map(p =>
-    `<button class="chip" data-plat="${p}" aria-pressed="${state.platforms.has(p)}">${PLATFORM[p] || p}</button>`).join("") : "";
-  if (state.tab === "reactions")
-    html += TONES.map(t => `<button class="chip" data-tone="${t}" aria-pressed="${state.tones.has(t)}"><span class="tone ${t}">●</span> ${t}</button>`).join("");
-  el.innerHTML = html;
-}
-
-function storyRow(i) {
-  const flags = (isNew(i) ? `<span class="flag new">new</span>` : "") + (isUpd(i) ? `<span class="flag upd">updated</span>` : "")
-    + (i.official && state.tab !== "official" ? `<span class="flag off">official</span>` : "");
-  const pts = i.score != null && i.score > 0 ? `<b>${i.score}</b>${i.kind === "repo" ? "stars" : "pts"}` : "";
-  const meta = [
-    `<span>${esc(i.source)}${i.platform !== "web" && i.platform !== "gnews" && PLATFORM[i.platform] !== i.source ? " on " + PLATFORM[i.platform] : ""}</span>`,
-    i.author ? `<span>by ${esc(i.author)}</span>` : "",
-    `<span title="${when(i).toLocaleString()}">${i.kind === "repo" && i.updated_at ? "pushed " + ago(new Date(i.updated_at))
-      : i.published ? ago(when(i)) : i.kind === "reference" ? (i.updated_at ? "changed " + ago(new Date(i.updated_at)) : "watched for changes") : "spotted " + ago(when(i))}</span>`,
-    i.discussion_url ? `<a href="${esc(i.discussion_url)}">${i.comments || 0} ${i.kind === "repo" ? "open issues" : "comments"}</a>` : "",
-  ].filter(Boolean).join("");
-  return `<li><span class="pts">${pts}</span><div>
-    <div class="t"><a href="${esc(i.url)}">${esc(i.title || i.url)}</a><span class="dom">${esc(i.context && i.platform === "gnews" ? i.context : dom(i.url))}</span>${flags}</div>
-    <div class="meta">${meta}</div>
-    ${i.text && state.tab !== "front" ? `<div class="desc">${esc(i.text)}</div>` : ""}
-  </div></li>`;
-}
-
-function reactionRow(i) {
-  return `<li class="rx"><div>
-    <div class="quote ${i.tone}"><p>${esc(i.text || i.title)}</p><button class="more" type="button" hidden>Show all</button></div>
-    <div class="meta" style="margin-top:6px">
-      <span class="tone ${i.tone}">● ${i.tone}</span>
-      <span>${esc(i.author || "anon")} on ${esc(PLATFORM[i.platform] === i.source ? i.source : (PLATFORM[i.platform] + " " + i.source))}</span>
-      <a href="${esc(i.url)}" title="${when(i).toLocaleString()}">${ago(when(i))}</a>
-      ${i.context ? `<span>in “${esc(i.context.length > 70 ? i.context.slice(0, 68) + "…" : i.context)}”</span>` : ""}
-      ${i.crossposts ? `<span>cross-posted to ${i.crossposts} places</span>` : ""}
-      ${isNew(i) ? `<span class="flag new">new</span>` : ""}
-    </div>
-  </div></li>`;
-}
-
-function sourcesTable() {
-  const rows = D.sources.map(s => `<tr>
-    <td>${s.url && s.kind !== "search" ? `<a href="${esc(s.url)}">${esc(s.name)}</a>` : esc(s.name)}
-        <div class="dim hide-sm" style="font-size:12.5px">${esc(s.kind === "search" ? "found by searching “" + s.url + "”" : s.kind === "page" ? dom(s.url) : s.kind + " · " + (dom(s.url) || "github"))}</div></td>
-    <td class="num">${s.items}</td>
-    <td>${s.status === "ok" ? `<span class="ok">ok</span>` : s.status ? `<span class="err" title="${esc(s.error)}">failed</span>` : `<span class="dim">not run</span>`}
-        ${s.error ? `<div class="dim" style="font-size:12.5px">${esc(s.error)}</div>` : ""}</td>
-    <td class="hide-sm">${s.changed_at ? ago(new Date(s.changed_at)) : `<span class="dim">no change seen</span>`}</td>
-  </tr>`).join("");
-  const feeds = D.health.filter(h => !D.sources.some(s => h.name.startsWith(s.name)));
-  const feedRows = feeds.map(h => `<tr><td>${esc(h.name)}</td><td class="num">${h.changes}</td>
-    <td>${h.status === "ok" ? `<span class="ok">ok</span>` : `<span class="err">failed</span><div class="dim" style="font-size:12.5px">${esc(h.error)}</div>`}</td><td class="hide-sm dim">${h.secs}s</td></tr>`).join("");
-  return `<table class="src"><thead><tr><th>Tracked source</th><th class="num">Items</th><th>Last run</th><th class="hide-sm">Page last changed</th></tr></thead><tbody>${rows}</tbody></table>
-    <table class="src" style="margin-top:28px"><thead><tr><th>Discovery feed</th><th class="num">Rows written</th><th>Last run</th><th class="hide-sm">Time</th></tr></thead><tbody>${feedRows}</tbody></table>`;
-}
-
-function renderMain() {
-  const tab = TABS.find(t => t.id === state.tab);
-  const main = document.getElementById("main");
-  if (!tab.pick) { main.innerHTML = sourcesTable(); return; }
-  let list = visible(tab);
-  if (tab.id === "reactions") list.sort((a, b) => when(b) - when(a) || (b.score || 0) - (a.score || 0));
-  else if (tab.id === "repos") list.sort((a, b) => (b.score || 0) - (a.score || 0));
-  else if (tab.id === "official") list.sort((a, b) => when(b) - when(a));
-  else list.sort((a, b) => rank(b) - rank(a));
-  if (!list.length) {
-    main.innerHTML = `<p class="empty">Nothing matches in this period. Widen the period or clear the filters.</p>`;
-    return;
-  }
-  main.innerHTML = `<ol class="list">${list.map(tab.id === "reactions" ? reactionRow : storyRow).join("")}</ol>`;
-  main.querySelectorAll(".quote").forEach(q => {
-    const p = q.querySelector("p"), b = q.querySelector(".more");
-    if (p.scrollHeight > p.clientHeight + 2) {
-      b.hidden = false;
-      b.onclick = () => { const o = q.classList.toggle("open"); b.textContent = o ? "Show less" : "Show all"; };
+/* One subline entry per platform the story showed up on. */
+function viaBits(s) {
+  const seen = new Set();
+  const bits = [];
+  for (const v of s.via) {
+    const key = v.platform === "web" || v.platform === "gnews" ? "src:" + v.source : v.platform + ":" + (v.source || "");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const href = v.discussion_url || v.url;
+    let label;
+    switch (v.platform) {
+      case "hn": label = `<span class="hot">${v.score ?? 0} points</span> on HN · ${v.comments ?? 0} comments`; break;
+      case "reddit": label = `#${(v.rank ?? 0) + 1} today on ${esc(v.source)}`; break;
+      case "lobsters": label = `${v.score ?? 0} on Lobsters · ${v.comments ?? 0} comments`; break;
+      case "hf_papers": label = `${v.score ?? 0} upvotes on HF Papers`; break;
+      case "hf_models": label = `♥ ${v.score ?? 0} on Hugging Face`; break;
+      case "github": label = `★ ${v.score ?? 0} on GitHub`; break;
+      default: label = esc(v.source);
     }
-  });
+    bits.push(`<a href="${esc(href)}" target="_blank" rel="noopener">${label}</a>`);
+  }
+  const extra = bits.length - 4;
+  return extra > 0 ? [...bits.slice(0, 4), `<span title="${esc(s.via.slice(4).map((v) => v.source).join(", "))}">+${extra} more</span>`] : bits;
 }
 
-function render() { renderTabs(); renderChips(); renderMain(); }
+function row(s, n) {
+  const pipe = '<span class="pipe">|</span>';
+  const tags = s.tags.map((t) => `<a href="#t/${t}">${esc(TOPIC_LABEL[t] || t)}</a>`).join(", ");
+  const sub = [
+    viaBits(s).join(pipe),
+    `<span title="${esc(s.t.toLocaleString())}">${ago(s.t)}</span>`,
+    tags,
+    s.comments.length ? `<button type="button" class="discuss" aria-expanded="false" data-id="${s.id}">discuss (${s.comments.length})</button>` : "",
+  ].filter(Boolean).join(pipe);
+  const comments = s.comments.length ? `<div class="comments" id="c-${s.id}" hidden>${s.comments.map((c) => `
+      <div class="c"><div class="who">${esc(c.author || "anon")} on <a href="${esc(c.thread)}" target="_blank" rel="noopener">${PLATFORM[c.platform] || c.platform}</a>${c.published ? " · " + ago(new Date(c.published)) : ""}</div>
+      <p>${esc(c.text)}</p></div>`).join("")}</div>` : "";
+  return `<li><span class="n">${n}.</span><div>
+    <div class="title"><a class="t" href="${esc(s.url)}" target="_blank" rel="noopener"${s.text ? ` title="${esc(s.text)}"` : ""}>${esc(s.title)}</a>${s.domain ? ` <a class="d" href="#site/${esc(s.domain)}">(${esc(s.domain)})</a>` : ""}${s.official ? '<span class="badge">official</span>' : ""}</div>
+    <div class="sub">${sub}</div>${comments}</div></li>`;
+}
 
-document.getElementById("tabs").addEventListener("click", e => {
-  const b = e.target.closest("[data-tab]"); if (!b) return;
-  state.tab = b.dataset.tab; state.platforms.clear(); state.tones.clear(); store.set("tab", state.tab); render();
+function route() {
+  const h = decodeURIComponent(location.hash.slice(1)) || "top";
+  const [view, arg, page] = h.split("/");
+  return { view, arg, page: Math.max(1, parseInt(view === "top" || view === "new" ? arg : page, 10) || 1) };
+}
+
+function navHTML(r) {
+  const items = [["new", "new"], ["past", "past"], ...DATA.topics.map((t) => ["t/" + t, TOPIC_LABEL[t] || t])];
+  return items.map(([href, label]) => {
+    const cur = (href === r.view) || (r.view === "t" && href === "t/" + r.arg);
+    return `<a href="#${href}"${cur ? ' aria-current="page"' : ""}>${esc(label)}</a>`;
+  }).join('<span class="sep">|</span>');
+}
+
+function render() {
+  const r = route();
+  const q = $("#q").value.trim().toLowerCase();
+  $("#nav").innerHTML = navHTML(r);
+  $("#brand").toggleAttribute("aria-current", r.view === "top");
+  let list = stories, intro = "", base = r.view;
+  const days = [...new Set(stories.map((s) => dayKey(s.t)))].sort().reverse();
+
+  if (r.view === "new") {
+    list = [...stories].sort((a, b) => b.t - a.t);
+    intro = "Newest first, across every platform.";
+  } else if (r.view === "past") {
+    const day = days.includes(r.arg) ? r.arg : days[1] || days[0];
+    const i = days.indexOf(day);
+    list = stories.filter((s) => dayKey(s.t) === day).sort((a, b) => b.heat - a.heat);
+    intro =
+      (days[i + 1] ? `<a href="#past/${days[i + 1]}">« ${esc(dayLabel(days[i + 1]))}</a> · ` : "") +
+      `Stories from <b>${esc(dayLabel(day))}</b>, ranked by how far they spread` +
+      (i > 0 ? ` · <a href="#past/${days[i - 1]}">${esc(dayLabel(days[i - 1]))} »</a>` : "");
+    base = "past/" + day;
+  } else if (r.view === "t") {
+    list = stories.filter((s) => s.tags.includes(r.arg));
+    intro = `Top stories tagged <b>${esc(TOPIC_LABEL[r.arg] || r.arg)}</b>.`;
+    base = "t/" + r.arg;
+  } else if (r.view === "site") {
+    list = [...stories].filter((s) => s.domain === r.arg).sort((a, b) => b.t - a.t);
+    intro = `Stories from <b>${esc(r.arg)}</b>.`;
+    base = "site/" + r.arg;
+  } else {
+    intro = esc(DATA.tagline) + ".";
+  }
+  if (q) {
+    list = list.filter((s) => (s.title + " " + s.domain + " " + s.via.map((v) => v.source).join(" ")).toLowerCase().includes(q));
+    intro = `${list.length} match${list.length === 1 ? "" : "es"} for <b>${esc(q)}</b>.`;
+  }
+  const start = (r.page - 1) * PER_PAGE;
+  const pageList = list.slice(start, start + PER_PAGE);
+  const moreHref = `#${base}/${r.page + 1}`;
+  $("#main").innerHTML =
+    `<div class="${r.view === "past" && !q ? "daynav" : "intro"}">${intro}</div>` +
+    (pageList.length ? `<ol class="stories">${pageList.map((s, i) => row(s, start + i + 1)).join("")}</ol>`
+      : `<div class="empty">Nothing here yet.</div>`) +
+    (list.length > start + PER_PAGE ? `<div class="more"><a href="${moreHref}">More</a></div>` : "");
+  document.title = r.view === "top" && !q ? DATA.title : `${DATA.title} · ${r.view === "t" ? TOPIC_LABEL[r.arg] || r.arg : r.view}`;
+}
+
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("button.discuss");
+  if (!b) return;
+  const box = document.getElementById("c-" + b.dataset.id);
+  box.hidden = !box.hidden;
+  b.setAttribute("aria-expanded", String(!box.hidden));
 });
-document.getElementById("chips").addEventListener("click", e => {
-  const b = e.target.closest(".chip"); if (!b) return;
-  const set = b.dataset.plat ? state.platforms : state.tones, v = b.dataset.plat || b.dataset.tone;
-  set.has(v) ? set.delete(v) : set.add(v); render();
-});
-const period = document.getElementById("period");
-period.value = String(state.period);
-period.addEventListener("change", () => { state.period = +period.value; store.set("period", period.value); render(); });
-document.getElementById("q").addEventListener("input", e => { state.q = e.target.value.trim(); renderMain(); });
-document.getElementById("theme").addEventListener("click", () => {
+$("#q").addEventListener("input", render);
+addEventListener("hashchange", () => { render(); scrollTo(0, 0); });
+
+/* theme: follows the OS unless toggled; the choice is remembered per browser */
+function applyTheme(t) { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }
+try { applyTheme(localStorage.getItem("ai-daily-theme")); } catch (_) {}
+$("#theme").addEventListener("click", () => {
   const dark = document.documentElement.dataset.theme
-    ? document.documentElement.dataset.theme === "dark"
-    : matchMedia("(prefers-color-scheme: dark)").matches;
-  document.documentElement.dataset.theme = dark ? "light" : "dark";
-  store.set("theme", document.documentElement.dataset.theme);
+    ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  const t = dark ? "light" : "dark";
+  applyTheme(t);
+  try { localStorage.setItem("ai-daily-theme", t); } catch (_) {}
 });
-const saved = store.get("theme", ""); if (saved) document.documentElement.dataset.theme = saved;
-if (!TABS.some(t => t.id === state.tab)) state.tab = "front";
 
-renderHeader(); renderReadout(); render();
+$("#updated").textContent = "updated " + generated.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
+{
+  const h = DATA.health || [];
+  const bad = h.filter((x) => x.status !== "ok");
+  $("#health").innerHTML = `<details><summary>${h.length - bad.length} of ${h.length} sources ok` +
+    (bad.length ? ` · <span class="bad">failed: ${bad.map((x) => esc(x.name)).join(", ")}</span>` : "") +
+    ` · ${stories.length} stories</summary><table>${h.map((x) =>
+      `<tr><td>${esc(x.name)}</td><td class="num">${x.items}</td><td>${x.status === "ok" ? "ok" : `<span class="bad" title="${esc(x.error)}">error</span>`}</td></tr>`).join("")}</table></details>`;
+}
+render();
 </script>
 </body>
 </html>

@@ -1,7 +1,8 @@
-"""Jev Daily collector.
+"""AI Daily collector.
 
-Fetches the tracked sources and discovery feeds in config.json, stores every item in
-SQLite (data/digest.db) and renders a static dashboard to site/index.html.
+Pulls AI/LLM/agent stories from the platforms in config.json (Hacker News, Reddit, Lobsters,
+Hugging Face, GitHub, lab blogs, press feeds, Google News), keeps every post in SQLite
+(data/ai-daily.db), then merges, filters and ranks them (rank.py) into site/index.html.
 
     python collector.py            # collect + render
     python collector.py --render   # re-render from the database only
@@ -27,11 +28,13 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import rank
+
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 SITE_DIR = ROOT / "site"
-DB_PATH = DATA_DIR / "digest.db"
-UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) jev-daily/1.0 (+personal news digest)"
+DB_PATH = DATA_DIR / "ai-daily.db"
+UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ai-daily/2.0 (+personal news digest)"
 
 NOW = datetime.now(timezone.utc)
 
@@ -58,7 +61,7 @@ def fetch(url: str, timeout: int = 25, retries: int = 1, headers: dict | None = 
                 return raw.decode(charset, errors="replace")
         except urllib.error.HTTPError as e:
             last = e
-            if e.code in (403, 404, 410):
+            if e.code in (401, 403, 404, 410):
                 break
             if e.code == 429:
                 time.sleep(10 * (attempt + 1))
@@ -89,8 +92,10 @@ def strip_html(s: str | None) -> str:
     return "\n".join(WS_RE.sub(" ", line).strip() for line in s.splitlines() if line.strip())
 
 
-def clip(s: str, n: int) -> str:
-    s = s.strip()
+def clip(s: str | None, n: int) -> str | None:
+    s = (s or "").strip()
+    if not s:
+        return None
     return s if len(s) <= n else s[: n - 1].rsplit(" ", 1)[0] + "…"
 
 
@@ -131,55 +136,60 @@ def parse_date(v) -> datetime | None:
         return None
 
 
+VISIBLE_DATE = re.compile(
+    r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? (\d{1,2}), (20\d\d)\b")
+MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+
+
 def page_published(page: str) -> datetime | None:
     d = meta(page, "article:published_time", "datePublished", "og:published_time", "date", "publish-date")
     if not d:
         m = re.search(r'"datePublished"\s*:\s*"([^"]+)"', page)
         d = m.group(1) if m else None
-    return parse_date(d)
+    if d and parse_date(d):  # some sites ship template placeholders like "YYYY-MM-DD"
+        return parse_date(d)
+    # Some lab blogs only print the date ("Sep 18, 2026") next to the headline.
+    h1 = page.find("<h1")
+    m = VISIBLE_DATE.search(strip_html(page[h1:h1 + 6000])) if h1 >= 0 else None
+    if m:
+        return datetime(int(m.group(3)), MONTHS.index(m.group(1)) + 1, int(m.group(2)), 12, tzinfo=timezone.utc)
+    return None
 
 
-TRACKING = re.compile(r"^(utm_|ref$|ref_src$|fbclid$|gclid$|mc_)")
+def row_id(platform: str, url: str) -> str:
+    return hashlib.sha1(f"{platform}|{rank.norm_url(url)}".encode()).hexdigest()[:16]
 
 
-def norm_url(u: str) -> str:
-    p = urllib.parse.urlsplit(u.strip())
-    q = [(k, v) for k, v in urllib.parse.parse_qsl(p.query) if not TRACKING.match(k)]
-    path = p.path.rstrip("/") or "/"
-    host = p.netloc.lower().removeprefix("www.")
-    return urllib.parse.urlunsplit(("https", host, path, urllib.parse.urlencode(q), ""))
+# --------------------------------------------------------------------------- feeds
+
+NS = {"a": "http://www.w3.org/2005/Atom", "dc": "http://purl.org/dc/elements/1.1/",
+      "content": "http://purl.org/rss/1.0/modules/content/"}
 
 
-def item_id(u: str) -> str:
-    return hashlib.sha1(norm_url(u).encode()).hexdigest()[:16]
-
-
-# --------------------------------------------------------------------------- tone (heuristic)
-
-POS = re.compile(
-    r"\b(impressive|love|loving|great|amazing|excit\w*|game[- ]?changer|useful|promising|cool|clever|"
-    r"brilliant|awesome|fantastic|nice|neat|elegant|works (?:really )?well|blown away|finally|wow|"
-    r"incredible|solid|huge|big deal|fast(?:er)?|cheap(?:er)?)\b",
-    re.I,
-)
-NEG = re.compile(
-    r"\b(skeptic\w*|sceptic\w*|hype\w*|doubt\w*|marketing|cherry[- ]?pick\w*|misleading|overhyped|"
-    r"suspicious|meh|not convinced|snake ?oil|vapou?r\w*|grift\w*|bs|bullshit|fake|worse|disappoint\w*|"
-    r"just a (?:classifier|bert)|closed[- ]source|unverified|benchmaxx\w*|red flag|concern\w*|"
-    r"not (?:new|novel)|reinvent\w*|confus\w*|why not just|what's the catch|underwhelm\w*|lock-?in)\b",
-    re.I,
-)
-
-
-def tone(text: str) -> str:
-    p, n = len(POS.findall(text)), len(NEG.findall(text))
-    if p == 0 and n == 0:
-        return "neutral"
-    if p >= 2 * n + 1 and p > n:
-        return "positive"
-    if n >= 2 * p + 1 and n > p:
-        return "skeptical"
-    return "mixed"
+def parse_feed(xml: str) -> list[dict]:
+    """RSS 2.0 or Atom -> [{title, url, published, text, author}]."""
+    root = ET.fromstring(xml.lstrip("\ufeff"))
+    out = []
+    for it in root.iter("item"):
+        out.append({
+            "title": strip_html(it.findtext("title")),
+            "url": (it.findtext("link") or "").strip(),
+            "published": iso(parse_date(it.findtext("pubDate") or it.findtext("dc:date", None, NS))),
+            "text": strip_html(it.findtext("description") or it.findtext("content:encoded", None, NS)),
+            "raw": it.findtext("description"),
+            "author": it.findtext("dc:creator", None, NS) or it.findtext("author"),
+        })
+    for e in root.iter(f"{{{NS['a']}}}entry"):
+        link = next((l.get("href") for l in e.findall("a:link", NS) if l.get("rel") in (None, "alternate")), None)
+        out.append({
+            "title": strip_html(e.findtext("a:title", "", NS)),
+            "url": (link or "").strip(),
+            "published": iso(parse_date(e.findtext("a:published", None, NS) or e.findtext("a:updated", None, NS))),
+            "text": strip_html(e.findtext("a:summary", None, NS) or e.findtext("a:content", None, NS)),
+            "raw": e.findtext("a:summary", None, NS),
+            "author": e.findtext("a:author/a:name", None, NS),
+        })
+    return [x for x in out if x["title"] and x["url"]]
 
 
 # --------------------------------------------------------------------------- storage
@@ -187,521 +197,410 @@ def tone(text: str) -> str:
 SCHEMA = """
 create table if not exists items (
   id text primary key,
-  kind text not null,            -- news | reaction | repo | update
-  source text not null,
-  platform text not null,        -- web | hn | reddit | github | devto | lobsters | gnews
-  title text, url text, text text, author text,
-  published text, first_seen text not null, last_seen text not null, updated_at text,
-  score integer, comments integer, discussion_url text,
-  official integer default 0, tone text, context text
+  platform text not null,        -- hn | reddit | lobsters | hf_papers | hf_models | github | web | gnews
+  source text not null,          -- display name: Hacker News, r/LocalLLaMA, OpenAI, TechCrunch ...
+  type text not null,            -- official | press | writer | aggregator | community | paper | code | model | gnews
+  dedicated integer default 0,   -- 1: an AI-only source, so it skips the keyword filter
+  title text, url text, discussion_url text, text text, author text,
+  published text, first_seen text not null, last_seen text not null,
+  score integer, comments integer, rank integer
 );
-create table if not exists pages (
-  url text primary key, source text, hash text, title text,
-  status text, checked_at text, changed_at text
+create index if not exists items_published on items(published);
+create table if not exists comments (
+  id text primary key, thread_url text not null, author text, text text, position integer, published text
 );
-create table if not exists runs (
-  started text primary key, finished text, stats text
-);
+create table if not exists seen_pages (url text primary key, source text, checked_at text);
+create table if not exists runs (started text primary key, finished text, stats text);
 """
 
 
 class Store:
-    def __init__(self, path: Path, title_strip: str | None = None):
-        self.title_strip = re.compile(title_strip) if title_strip else None
+    def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
 
     def upsert(self, it: dict) -> None:
-        it = {
-            "kind": "news", "platform": "web", "title": None, "text": None, "author": None,
-            "published": None, "updated_at": None, "score": None, "comments": None,
-            "discussion_url": None, "official": 0, "tone": None, "context": None, **it,
-        }
-        it.setdefault("id", item_id(it["url"]))
-        if it["title"] and self.title_strip:
-            it["title"] = self.title_strip.sub("", it["title"]).strip()
+        it = {"discussion_url": None, "text": None, "author": None, "published": None, "score": None,
+              "comments": None, "rank": None, "dedicated": 0, **it}
+        it.setdefault("id", row_id(it["platform"], it.get("discussion_url") or it["url"]))
         it["first_seen"] = it["last_seen"] = NOW_ISO
+        it["text"] = clip(it["text"], 400)
         self.db.execute(
-            """insert into items (id, kind, source, platform, title, url, text, author, published,
-                 first_seen, last_seen, updated_at, score, comments, discussion_url, official, tone, context)
-               values (:id, :kind, :source, :platform, :title, :url, :text, :author, :published,
-                 :first_seen, :last_seen, :updated_at, :score, :comments, :discussion_url, :official, :tone, :context)
+            """insert into items (id, platform, source, type, dedicated, title, url, discussion_url, text, author,
+                 published, first_seen, last_seen, score, comments, rank)
+               values (:id, :platform, :source, :type, :dedicated, :title, :url, :discussion_url, :text, :author,
+                 :published, :first_seen, :last_seen, :score, :comments, :rank)
                on conflict(id) do update set
                  last_seen = excluded.last_seen,
-                 title = coalesce(items.title, excluded.title),
-                 text = coalesce(excluded.text, items.text),
-                 author = coalesce(items.author, excluded.author),
+                 source = excluded.source, dedicated = excluded.dedicated,
+                 title = coalesce(excluded.title, items.title),
+                 text = coalesce(items.text, excluded.text),
                  published = coalesce(items.published, excluded.published),
-                 updated_at = coalesce(excluded.updated_at, items.updated_at),
                  score = max(coalesce(items.score, 0), coalesce(excluded.score, 0)),
                  comments = max(coalesce(items.comments, 0), coalesce(excluded.comments, 0)),
-                 discussion_url = coalesce(excluded.discussion_url, items.discussion_url),
-                 official = max(items.official, excluded.official),
-                 tone = coalesce(excluded.tone, items.tone),
-                 context = coalesce(items.context, excluded.context)""",
+                 rank = min(coalesce(items.rank, 9999), coalesce(excluded.rank, 9999))""",
             it,
         )
+        if it["rank"] is None:
+            self.db.execute("update items set rank = null where id = ? and rank = 9999", (it["id"],))
 
-    def page(self, url: str):
-        return self.db.execute("select * from pages where url = ?", (url,)).fetchone()
-
-    def save_page(self, url, source, h, title, status, changed):
+    def add_comment(self, c: dict) -> None:
         self.db.execute(
-            """insert into pages (url, source, hash, title, status, checked_at, changed_at)
-               values (?, ?, ?, ?, ?, ?, ?)
-               on conflict(url) do update set hash = coalesce(excluded.hash, pages.hash),
-                 title = coalesce(excluded.title, pages.title), status = excluded.status,
-                 checked_at = excluded.checked_at,
-                 changed_at = coalesce(excluded.changed_at, pages.changed_at)""",
-            (url, source, h, title, status, NOW_ISO, NOW_ISO if changed else None),
-        )
+            """insert into comments (id, thread_url, author, text, position, published)
+               values (:id, :thread_url, :author, :text, :position, :published)
+               on conflict(id) do update set position = excluded.position, text = excluded.text""", c)
 
-    def has_pages_for(self, source: str, prefix: str) -> bool:
-        return self.db.execute(
-            "select 1 from pages where source = ? and url like ? limit 1", (source, prefix + "%")
-        ).fetchone() is not None
+    def seen(self, source: str) -> set[str]:
+        return {r[0] for r in self.db.execute("select url from seen_pages where source = ?", (source,))}
+
+    def mark_seen(self, source: str, urls) -> None:
+        self.db.executemany("insert or replace into seen_pages values (?, ?, ?)",
+                            [(u, source, NOW_ISO) for u in urls])
 
 
-# --------------------------------------------------------------------------- collectors
+# --------------------------------------------------------------------------- adapters
+# Each adapter fetches + parses (thread-safe, no DB access) and returns a list of rows.
 
 class Collector:
     def __init__(self, cfg: dict, store: Store):
         self.cfg = cfg
         self.store = store
-        self.rel = re.compile(cfg["relevance"], re.I)
-        self.disc = cfg.get("discovery", {})
-        self.since = NOW - timedelta(days=cfg.get("window_days", 30))
+        self.window = timedelta(days=cfg.get("window_days", 14))
         self.health: list[dict] = []
-        self.pool = ThreadPoolExecutor(max_workers=8)
+        self.pool = ThreadPoolExecutor(max_workers=10)
 
-    def relevant(self, *parts) -> bool:
-        return bool(self.rel.search(" ".join(p for p in parts if p)))
-
-    def run(self, name: str, fn, *args) -> None:
-        t0 = time.time()
-        before = self.store.db.total_changes
-        try:
-            fn(*args)
-            status, err = "ok", None
-        except Exception as e:
-            status, err = "error", clip(str(e), 200)
-            traceback.print_exc()
-        self.store.db.commit()
-        rec = {"name": name, "status": status, "error": err,
-               "changes": self.store.db.total_changes - before, "secs": round(time.time() - t0, 1)}
-        self.health.append(rec)
-        print(f"  {status:5} {name:34} {rec['changes']:4} changes  {rec['secs']}s" + (f"  {err}" if err else ""))
-
-    # ---- tracked sources
-
-    def src_page(self, s: dict) -> None:
-        url = s["url"]
-        try:
-            body = fetch(url)
-        except Exception:
-            # Keep a known source visible even when this network can't reach it today.
-            self.store.upsert({"url": url, "source": s["name"], "title": s.get("title") or s["name"],
-                               "kind": "reference" if s.get("reference") else "news",
-                               "published": s.get("published"), "official": int(bool(s.get("official")))})
-            self.attach_hn(url)
-            raise
-        is_html = "<html" in body[:2000].lower()
-        title = s.get("title") or (page_title(body) if is_html else None) or url
-        desc = (meta(body, "og:description", "description", "twitter:description") if is_html else None)
-        if not desc:
-            desc = clip(strip_html(body), 280)
-        m = re.search(r"(?is)<(article|main)[^>]*>(.*?)</\1>", body) if is_html else None
-        text = strip_html(m.group(2) if m else body)
-        h = hashlib.sha1(text.encode()).hexdigest()
-        prev = self.store.page(url)
-        changed = bool(prev and prev["hash"] and prev["hash"] != h)
-        self.store.save_page(url, s["name"], h, title, "ok", changed)
-        pub = page_published(body) if is_html else None
-        self.store.upsert({
-            "url": url, "source": s["name"], "title": title, "text": clip(desc, 400),
-            "kind": "reference" if s.get("reference") else "news",
-            "published": iso(pub), "official": int(bool(s.get("official"))),
-            "updated_at": NOW_ISO if changed else None,
-        })
-        self.attach_hn(url)
-
-    def src_sitemap(self, s: dict) -> None:
-        xml = fetch(s["url"])
-        entries = re.findall(r"<url>(.*?)</url>", xml, re.S)
-        locs = []
-        for e in entries:
-            loc = re.search(r"<loc>\s*([^<\s]+)", e)
-            mod = re.search(r"<lastmod>\s*([^<\s]+)", e)
-            if loc and s.get("match", "") in loc.group(1):
-                locs.append((html.unescape(loc.group(1)), mod.group(1) if mod else None))
-        host = urllib.parse.urlsplit(s["url"]).scheme + "://" + urllib.parse.urlsplit(s["url"]).netloc
-        bootstrap = not self.store.has_pages_for(s["name"], host)
-        is_blog = "/blog/" in s.get("match", "")
-        todo = []
-        for loc, mod in locs:
-            prev = self.store.page(loc)
-            if prev is None:
-                todo.append((loc, mod, "new"))
-            elif mod and prev["hash"] and prev["hash"] != mod:
-                todo.append((loc, mod, "updated"))
-            else:
-                self.store.save_page(loc, s["name"], mod, None, "ok", False)
-        if bootstrap and not is_blog:
-            # First sight of a docs sitemap: record the baseline, only report diffs from now on.
-            for loc, mod, _ in todo:
-                self.store.save_page(loc, s["name"], mod, None, "ok", False)
-            return
-        info = dict(zip([t[0] for t in todo[:25]], self.pool.map(self._title_of, [t[0] for t in todo[:25]])))
-        for loc, mod, what in todo:
-            page_t, page_pub = info.get(loc) or (None, None)
-            self.store.save_page(loc, s["name"], mod, page_t, "ok", what == "updated")
-            title = page_t or loc.rsplit("/", 1)[-1].replace("-", " ")
-            if is_blog:
-                self.store.upsert({
-                    "url": loc, "source": s["name"], "title": title, "official": 1,
-                    "published": iso(page_pub or parse_date(mod)),
-                    "updated_at": NOW_ISO if what == "updated" else None,
-                })
-                self.attach_hn(loc)
-            else:
-                self.store.upsert({
-                    "id": item_id(loc + "#" + (mod or NOW_ISO)), "url": loc, "kind": "update",
-                    "source": s["name"], "official": 1, "published": iso(parse_date(mod)) or NOW_ISO,
-                    "title": f"{'New' if what == 'new' else 'Updated'} doc page: {title}",
-                })
-
-    def _title_of(self, url: str) -> tuple[str | None, datetime | None]:
-        try:
-            page = fetch(url, retries=0)
-            return page_title(page), page_published(page)
-        except Exception:
-            return None, None
-
-    def src_links(self, s: dict) -> None:
-        body = fetch(s["url"])
-        hrefs = {urllib.parse.urljoin(s["url"], h) for h in re.findall(r'href="([^"#]+)"', body)}
-        cand = sorted(h for h in hrefs if s.get("match", "") in h and h.rstrip("/") != s["url"].rstrip("/"))
-        new = [h for h in cand if self.store.page(h) is None][:30]
-
-        def check(u):
-            try:
-                return u, fetch(u, retries=0)
-            except Exception:
-                return u, None
-
-        for u, page in self.pool.map(check, new):
-            if page is None:
-                continue
-            title = page_title(page)
-            ok = self.relevant(strip_html(page))
-            self.store.save_page(u, s["name"], None, title, "relevant" if ok else "irrelevant", False)
-            if ok:
-                self.store.upsert({
-                    "url": u, "source": s["name"], "title": title,
-                    "text": clip(meta(page, "og:description", "description") or "", 400) or None,
-                    "published": iso(page_published(page)),
-                })
-                self.attach_hn(u)
-
-    def src_github(self, s: dict) -> None:
-        for repo in s["repos"]:
-            self.github_repo(fetch_json(f"https://api.github.com/repos/{repo}", headers=self.gh_headers()), s["name"])
+    def since(self, days: float | None = None) -> datetime:
+        return NOW - (timedelta(days=days) if days else self.window)
 
     def gh_headers(self) -> dict:
         tok = os.environ.get("GITHUB_TOKEN")
         return {"Accept": "application/vnd.github+json", **({"Authorization": f"Bearer {tok}"} if tok else {})}
 
-    def github_repo(self, r: dict, source: str) -> None:
-        self.store.upsert({
-            "url": r["html_url"], "kind": "repo", "platform": "github", "source": source,
-            "title": r["full_name"], "text": clip(r.get("description") or "", 300) or None,
-            "author": r["owner"]["login"], "published": r.get("created_at"),
-            "updated_at": r.get("pushed_at"), "score": r.get("stargazers_count"),
-            "comments": r.get("open_issues_count"),
-        })
+    # ---- community
 
-    def src_search(self, s: dict) -> None:
-        # Sources without a known URL: find them by name via Google News and HN.
-        n = self.gnews(s["query"], source=s["name"], require=s["name"])
-        n += self.hn_stories(s["query"], source=s["name"], require=s["name"])
-        if n == 0:
-            print(f"        (no matches yet for {s['name']!r})")
-
-    # ---- discovery
-
-    def attach_hn(self, url: str) -> None:
-        """Find HN discussions of a specific URL and fold them into that item."""
-        q = urllib.parse.urlencode({"query": norm_url(url).split("://", 1)[1], "tags": "story",
-                                    "restrictSearchableAttributes": "url", "hitsPerPage": 5})
-        try:
-            hits = fetch_json(f"https://hn.algolia.com/api/v1/search?{q}", retries=0)["hits"]
-        except Exception:
-            return
-        hits = [h for h in hits if h.get("url") and norm_url(h["url"]) == norm_url(url)]
-        if hits:
-            top = max(hits, key=lambda h: h.get("points") or 0)
-            self.store.upsert({
-                "url": url, "source": "?", "score": top.get("points"), "comments": top.get("num_comments"),
-                "discussion_url": f"https://news.ycombinator.com/item?id={top['objectID']}",
-            })
-
-    def hn_stories(self, query: str, source: str = "Hacker News", require: str | None = None) -> int:
-        q = urllib.parse.urlencode({
-            "query": query, "tags": "story", "hitsPerPage": 50,
-            "numericFilters": f"created_at_i>{int(self.since.timestamp())}",
-        })
-        n = 0
-        for h in fetch_json(f"https://hn.algolia.com/api/v1/search?{q}")["hits"]:
-            if not self.relevant(h.get("title"), h.get("url"), h.get("story_text")):
-                continue
-            if require and require.lower() not in f"{h.get('title')} {h.get('url')}".lower():
-                continue
-            hn = f"https://news.ycombinator.com/item?id={h['objectID']}"
-            self.store.upsert({
-                "url": h.get("url") or hn, "platform": "hn", "source": source if source != "Hacker News" else (
-                    urllib.parse.urlsplit(h["url"]).netloc.removeprefix("www.") if h.get("url") else "Hacker News"),
-                "title": h.get("title"), "author": h.get("author"), "published": h.get("created_at"),
-                "score": h.get("points"), "comments": h.get("num_comments"), "discussion_url": hn,
-                "text": clip(strip_html(h.get("story_text")), 400) or None,
-            })
-            n += 1
-        return n
-
-    def disc_hn(self) -> None:
-        for q in self.disc.get("hn_queries", []):
-            self.hn_stories(q)
-        # Reactions: comments anywhere on HN that mention the topic.
-        for q in self.disc.get("hn_queries", []):
-            p = urllib.parse.urlencode({
-                "query": q, "tags": "comment", "hitsPerPage": 60,
-                "numericFilters": f"created_at_i>{int(self.since.timestamp())}",
-            })
-            for h in fetch_json(f"https://hn.algolia.com/api/v1/search_by_date?{p}")["hits"]:
-                text = strip_html(h.get("comment_text"))
-                if self.relevant(text, h.get("story_title")):
-                    self.hn_reaction(h["objectID"], h.get("author"), text, h.get("created_at"), h.get("story_title"))
-
-    def disc_hn_threads(self) -> None:
-        # Top-ranked comments from the biggest threads (HN's own ranking via the Firebase API).
-        rows = self.store.db.execute(
-            """select discussion_url, title from items
-               where kind != 'reaction' and discussion_url like '%news.ycombinator.com/item?id=%'
-               order by coalesce(comments, 0) desc limit ?""",
-            (self.disc.get("hn_threads_with_comments", 5),),
-        ).fetchall()
-        per = self.disc.get("hn_comments_per_thread", 8)
-        for row in rows:
-            sid = row["discussion_url"].rsplit("=", 1)[-1]
-            story = fetch_json(f"https://hacker-news.firebaseio.com/v0/item/{sid}.json")
-            kids = (story or {}).get("kids", [])[:per]
-            for rank, c in enumerate(self.pool.map(
-                    lambda k: fetch_json(f"https://hacker-news.firebaseio.com/v0/item/{k}.json", retries=0), kids)):
-                if not c or c.get("deleted") or c.get("dead"):
-                    continue
-                self.hn_reaction(str(c["id"]), c.get("by"), strip_html(c.get("text")), c.get("time"),
-                                 row["title"], score=per - rank)
-
-    def hn_reaction(self, cid, author, text, created, story_title, score=None) -> None:
-        if not text:
-            return
-        self.store.upsert({
-            "url": f"https://news.ycombinator.com/item?id={cid}", "kind": "reaction", "platform": "hn",
-            "source": "Hacker News", "title": story_title, "text": clip(text, 900), "author": author,
-            "published": iso(parse_date(created)), "tone": tone(text), "context": story_title, "score": score,
-        })
-
-    def disc_reddit(self) -> None:
-        ns = {"a": "http://www.w3.org/2005/Atom"}
-        posts = []
-        failed = []
-        for q in self.disc.get("reddit_queries", []):
-            u = "https://www.reddit.com/search.rss?" + urllib.parse.urlencode({"q": q, "sort": "new", "t": "month"})
-            try:
-                root = ET.fromstring(fetch(u, retries=2))
-            except Exception as e:
-                failed.append(str(e))
-                continue
-            for e in root.findall("a:entry", ns):
-                title = e.findtext("a:title", "", ns)
-                content = strip_html(e.findtext("a:content", "", ns))
-                link = e.find("a:link", ns).get("href")
-                if not self.relevant(title, content):
-                    continue
-                cat = e.find("a:category", ns)
-                sub = cat.get("label") if cat is not None else "reddit"
-                self.store.upsert({
-                    "url": link, "kind": "reaction", "platform": "reddit", "source": sub,
-                    "title": title, "text": clip(content.replace("submitted by", "").strip(), 900) or None,
-                    "author": (e.findtext("a:author/a:name", "", ns) or "").removeprefix("/u/"),
-                    "published": e.findtext("a:updated", None, ns), "tone": tone(title + " " + content),
-                    "context": title,
+    def a_hn(self, s: dict, state: dict) -> list[dict]:
+        # Every story over min_points, one Algolia query per day (a query returns at most 1000 hits).
+        days = s.get("days", 3) if state["has_rows"] else s.get("backfill_days", self.window.days)
+        rows = []
+        for d in range(days):
+            hi, lo = NOW - timedelta(days=d), NOW - timedelta(days=d + 1)
+            q = urllib.parse.urlencode({
+                "tags": "story", "hitsPerPage": 1000,
+                "numericFilters": f"created_at_i>{int(lo.timestamp())},created_at_i<={int(hi.timestamp())},"
+                                  f"points>={s.get('min_points', 15)}"})
+            for h in fetch_json(f"https://hn.algolia.com/api/v1/search_by_date?{q}")["hits"]:
+                hn = f"https://news.ycombinator.com/item?id={h['objectID']}"
+                rows.append({
+                    "platform": "hn", "source": "Hacker News", "type": "community",
+                    "title": h.get("title"), "url": h.get("url") or hn, "discussion_url": hn,
+                    "text": strip_html(h.get("story_text")), "author": h.get("author"),
+                    "published": h.get("created_at"), "score": h.get("points"), "comments": h.get("num_comments"),
                 })
-                posts.append((link, title, sub))
-            time.sleep(6)
-        # A few top comments from the newest threads (Reddit throttles RSS, so keep it small).
-        for link, title, sub in posts[:4]:
+        return rows
+
+    def a_reddit(self, s: dict, state: dict) -> list[dict]:
+        # One combined "top of the day" feed; RSS has no vote counts, so feed position stands in for them.
+        u = (f"https://www.reddit.com/r/{'+'.join(s['subs'])}/top/.rss?"
+             + urllib.parse.urlencode({"t": "day", "limit": s.get("limit", 100)}))
+        root = ET.fromstring(fetch(u, retries=2))
+        rows = []
+        for pos, e in enumerate(root.findall("a:entry", NS)):
+            thread = e.find("a:link", NS).get("href")
+            content = e.findtext("a:content", "", NS)
+            link = re.search(r'<a href="([^"]+)">\[link\]</a>', content)
+            ext = html.unescape(link.group(1)) if link else None
+            if ext and ("reddit.com" in ext or "redd.it" in ext):
+                ext = None
+            cat = e.find("a:category", NS)
+            sub = cat.get("term") if cat is not None else ""
+            text = strip_html(content)
+            text = re.split(r"submitted by\s", text)[0].strip()
+            rows.append({
+                "platform": "reddit", "source": f"r/{sub}" if sub else "Reddit",
+                "type": "community", "dedicated": int(sub in s.get("dedicated_subs", [])),
+                "title": strip_html(e.findtext("a:title", "", NS)), "url": ext or thread, "discussion_url": thread,
+                "text": text, "author": (e.findtext("a:author/a:name", "", NS) or "").removeprefix("/u/"),
+                "published": iso(parse_date(e.findtext("a:published", None, NS) or e.findtext("a:updated", None, NS))),
+                "rank": pos,
+            })
+        return rows
+
+    def a_lobsters(self, s: dict, state: dict) -> list[dict]:
+        rows, errors = [], []
+        for tag in s.get("tags", ["ai"]):
             try:
-                root = ET.fromstring(fetch(link.rstrip("/") + "/.rss?limit=6", retries=0))
+                data = fetch_json(f"https://lobste.rs/t/{tag}.json")
+            except Exception as e:
+                errors.append(str(e))
+                continue
+            for p in data:
+                rows.append({
+                    "platform": "lobsters", "source": "Lobsters", "type": "community", "dedicated": 1,
+                    "title": p["title"], "url": p.get("url") or p["comments_url"],
+                    "discussion_url": p["comments_url"], "text": strip_html(p.get("description")),
+                    "author": (p.get("submitter_user") or {}).get("username") if isinstance(p.get("submitter_user"), dict)
+                    else p.get("submitter_user"),
+                    "published": iso(parse_date(p.get("created_at"))), "score": p.get("score"),
+                    "comments": p.get("comment_count"),
+                })
+        if errors and not rows:
+            raise RuntimeError("; ".join(errors))
+        return rows
+
+    # ---- papers, models, code
+
+    def a_hf_papers(self, s: dict, state: dict) -> list[dict]:
+        rows = []
+        for p in fetch_json(f"https://huggingface.co/api/daily_papers?limit={s.get('limit', 50)}"):
+            paper = p.get("paper", {})
+            pid = paper.get("id")
+            if not pid:
+                continue
+            rows.append({
+                "platform": "hf_papers", "source": "HF Papers", "type": "paper", "dedicated": 1,
+                "title": p.get("title") or paper.get("title"), "url": f"https://arxiv.org/abs/{pid}",
+                "discussion_url": f"https://huggingface.co/papers/{pid}",
+                "text": paper.get("ai_summary") or paper.get("summary"),
+                "published": iso(parse_date(p.get("publishedAt") or paper.get("publishedAt"))),
+                "score": paper.get("upvotes"), "comments": p.get("numComments"),
+            })
+        return rows
+
+    def a_hf_models(self, s: dict, state: dict) -> list[dict]:
+        cutoff = self.since(s.get("max_age_days", 21))
+        rows = []
+        for m in fetch_json(f"https://huggingface.co/api/models?sort=trendingScore&limit={s.get('limit', 40)}"):
+            created = parse_date(m.get("createdAt"))
+            if created and created < cutoff:
+                continue  # trending but old: not news
+            task = (m.get("pipeline_tag") or "").replace("-", " ")
+            rows.append({
+                "platform": "hf_models", "source": "HF trending", "type": "model", "dedicated": 1,
+                "title": f"{m['id']}" + (f" ({task})" if task else ""), "url": f"https://huggingface.co/{m['id']}",
+                "published": iso(created), "score": m.get("likes"),
+            })
+        return rows
+
+    def a_github(self, s: dict, state: dict) -> list[dict]:
+        since = self.since(s.get("days", 7))
+        seen, rows = set(), []
+        for topic in s["topics"]:
+            u = "https://api.github.com/search/repositories?" + urllib.parse.urlencode({
+                "q": f"topic:{topic} created:>{since:%Y-%m-%d} stars:>={s.get('min_stars', 30)}",
+                "sort": "stars", "per_page": s.get("per_topic", 20)})
+            for r in fetch_json(u, headers=self.gh_headers()).get("items", []):
+                if r["full_name"] in seen:
+                    continue
+                seen.add(r["full_name"])
+                desc = r.get("description") or ""
+                rows.append({
+                    "platform": "github", "source": "GitHub", "type": "code", "dedicated": 1,
+                    "title": r["full_name"] + (f": {clip(desc, 110)}" if desc else ""), "url": r["html_url"],
+                    "text": desc, "author": r["owner"]["login"], "published": r.get("created_at"),
+                    "score": r.get("stargazers_count"),
+                })
+        return rows
+
+    # ---- web: lab blogs, press, writers
+
+    def a_feed(self, s: dict, state: dict) -> list[dict]:
+        cutoff = self.since()
+        rows = []
+        for e in parse_feed(fetch(s["url"], timeout=s.get("timeout", 25))):
+            pub = parse_date(e["published"])
+            if pub and pub < cutoff:
+                continue
+            if s.get("link_from_description") and e["raw"]:
+                # Aggregators (Techmeme) link to their own page; the story is the first outside link.
+                ext = [u for u in re.findall(r'(?i)href="(https?://[^"]+)"', e["raw"])
+                       if rank.domain(s["url"]) not in rank.domain(u)]
+                e["url"] = html.unescape(ext[0]) if ext else e["url"]
+                e["title"] = re.sub(r"\s*\([^()]*\)$", "", e["title"])
+            e.pop("raw")
+            rows.append({"platform": "web", "source": s["name"], "type": s.get("type", "press"),
+                         "dedicated": int(s.get("dedicated", True)), **e})
+        return rows[: s.get("max", 40)]
+
+    def a_sitemap(self, s: dict, state: dict) -> list[dict]:
+        """Blogs without a feed: new URLs under `match` with a recent lastmod, dated from the page itself."""
+        xml = fetch(s["url"])
+        match = re.compile(s.get("match", "."))
+        cutoff = self.since()
+        cand = []
+        for e in re.findall(r"<url>(.*?)</url>", xml, re.S):
+            loc = re.search(r"<loc>\s*([^<\s]+)", e)
+            mod = re.search(r"<lastmod>\s*([^<\s]+)", e)
+            if not loc or not match.search(loc.group(1)):
+                continue
+            url = html.unescape(loc.group(1))
+            lastmod = parse_date(mod.group(1)) if mod else None
+            if url not in state["seen"] and (lastmod is None or lastmod >= cutoff):
+                cand.append((lastmod or cutoff, url))
+        # Newest lastmod first: a site rebuild can touch every page, and the cap should go to real news.
+        state["checked"] = [u for _, u in sorted(cand, reverse=True)[: s.get("max", 20)]]
+
+        def info(u):
+            try:
+                page = fetch(u, retries=0)
+                return u, page_title(page), page_published(page), meta(page, "og:description", "description")
+            except Exception:
+                return u, None, None, None
+
+        rows = []
+        for u, title, pub, desc in self.pool.map(info, state["checked"]):
+            if not title or not pub or pub < cutoff:
+                continue  # undated or old pages (re-edited evergreen pages) are not news
+            title = re.sub(s.get("title_strip", r"$^"), "", title).strip()
+            rows.append({"platform": "web", "source": s["name"], "type": s.get("type", "official"),
+                         "dedicated": 1, "title": title, "url": u, "text": desc, "published": iso(pub)})
+        return rows
+
+    def a_gnews(self, s: dict, state: dict) -> list[dict]:
+        rows = []
+        for q in s["queries"]:
+            u = "https://news.google.com/rss/search?" + urllib.parse.urlencode(
+                {"q": f"{q} when:{s.get('days', 3)}d", "hl": "en-US", "gl": "US", "ceid": "US:en"})
+            for it in list(ET.fromstring(fetch(u)).iter("item"))[: s.get("per_query", 15)]:
+                title, pub = it.findtext("title", ""), it.findtext("source", "")
+                if pub and title.endswith(" - " + pub):
+                    title = title[: -len(pub) - 3]
+                rows.append({"platform": "gnews", "source": pub or "Google News", "type": "gnews",
+                             "title": title, "url": it.findtext("link"),
+                             "published": iso(parse_date(it.findtext("pubDate")))})
+        return rows
+
+    # ---- reactions: top comments from the biggest threads
+
+    def hn_comments(self, per: int, threads: int) -> None:
+        rows = self.store.db.execute(
+            """select discussion_url from items where platform = 'hn' and published >= ?
+               order by score desc limit ?""", (iso(self.since(2)), threads)).fetchall()
+
+        def get(url):
+            sid = url.rsplit("=", 1)[-1]
+            story = fetch_json(f"https://hacker-news.firebaseio.com/v0/item/{sid}.json") or {}
+            kids = story.get("kids", [])[:per + 3]
+            out = []
+            for c in self.pool.map(lambda k: fetch_json(
+                    f"https://hacker-news.firebaseio.com/v0/item/{k}.json", retries=0), kids):
+                if c and not c.get("deleted") and not c.get("dead") and c.get("text"):
+                    out.append(c)
+            return url, out[:per]
+
+        for url, cs in ThreadPoolExecutor(4).map(get, [r[0] for r in rows]):
+            for pos, c in enumerate(cs):
+                self.store.add_comment({"id": f"hn{c['id']}", "thread_url": url, "author": c.get("by"),
+                                        "text": clip(strip_html(c["text"]), 700), "position": pos,
+                                        "published": iso(parse_date(c.get("time")))})
+
+    def reddit_comments(self, per: int, threads: int) -> None:
+        rows = self.store.db.execute(
+            """select discussion_url from items where platform = 'reddit' and last_seen = ? and rank is not null
+               order by rank limit ?""", (NOW_ISO, threads)).fetchall()
+        for (url,) in rows:
+            try:
+                root = ET.fromstring(fetch(url.rstrip("/") + f"/.rss?limit={per + 2}&sort=top", retries=0))
             except Exception:
                 continue
             finally:
-                time.sleep(6)
-            for e in root.findall("a:entry", ns)[1:6]:  # entry 0 is the post itself
-                text = strip_html(e.findtext("a:content", "", ns))
-                if len(text) < 40:
-                    continue
-                self.store.upsert({
-                    "url": e.find("a:link", ns).get("href"), "kind": "reaction", "platform": "reddit",
-                    "source": sub, "title": title, "text": clip(text, 900), "context": title,
-                    "author": (e.findtext("a:author/a:name", "", ns) or "").removeprefix("/u/"),
-                    "published": e.findtext("a:updated", None, ns), "tone": tone(text),
-                })
-        if failed and not posts:
-            raise RuntimeError("; ".join(failed))
-
-    def gnews(self, query: str, source: str | None = None, require: str | None = None) -> int:
-        u = "https://news.google.com/rss/search?" + urllib.parse.urlencode(
-            {"q": f"{query} when:{self.cfg.get('window_days', 30)}d", "hl": "en-US", "gl": "US", "ceid": "US:en"})
-        root = ET.fromstring(fetch(u))
-        n = 0
-        for it in root.iter("item"):
-            title = it.findtext("title", "")
-            pub = it.findtext("source", "")
-            desc = strip_html(it.findtext("description", ""))
-            if pub and title.endswith(" - " + pub):
-                title = title[: -len(pub) - 3]
-            if not self.relevant(title, desc):
-                continue
-            if require and require.lower() not in (title + " " + pub + " " + desc).lower():
-                continue
-            self.store.upsert({
-                "url": it.findtext("link"), "platform": "gnews", "source": source or pub or "Google News",
-                "title": title, "published": iso(parse_date(it.findtext("pubDate"))), "context": pub or None,
-            })
-            n += 1
-        return n
-
-    def disc_gnews(self) -> None:
-        for q in self.disc.get("google_news_queries", []):
-            self.gnews(q)
-
-    def disc_github(self) -> None:
-        for q in self.disc.get("github_queries", []):
-            u = "https://api.github.com/search/repositories?" + urllib.parse.urlencode(
-                {"q": f"{q} created:>{self.since:%Y-%m-%d}", "sort": "stars", "per_page": 30})
-            for r in fetch_json(u, headers=self.gh_headers()).get("items", []):
-                if self.relevant(r.get("name"), r.get("description"), " ".join(r.get("topics", []))):
-                    self.github_repo(r, "GitHub")
-
-    def disc_devto(self) -> None:
-        for tag in self.disc.get("devto_tags", []):
-            for a in fetch_json(f"https://dev.to/api/articles?tag={tag}&per_page=30&top=30"):
-                if not self.relevant(a.get("title"), a.get("description"), " ".join(a.get("tag_list", []))):
-                    continue
-                self.store.upsert({
-                    "url": a["url"], "platform": "devto", "source": "DEV", "title": a["title"],
-                    "text": clip(a.get("description") or "", 300) or None, "author": a["user"]["username"],
-                    "published": a.get("published_at"), "score": a.get("positive_reactions_count"),
-                    "comments": a.get("comments_count"), "discussion_url": a["url"] + "#comments",
-                })
-
-    def disc_lobsters(self) -> None:
-        for tag in self.disc.get("lobsters_tags", []):
-            root = ET.fromstring(fetch(f"https://lobste.rs/t/{tag}.rss"))
-            for it in root.iter("item"):
-                title, link = it.findtext("title", ""), it.findtext("link", "")
-                if not self.relevant(title, link):
-                    continue
-                self.store.upsert({
-                    "url": link, "platform": "lobsters", "source": "Lobsters", "title": title,
-                    "author": (it.findtext("author") or "").rsplit(" via ", 1)[-1] or None,
-                    "published": iso(parse_date(it.findtext("pubDate"))),
-                    "discussion_url": it.findtext("comments"),
-                })
+                time.sleep(3)
+            for pos, e in enumerate([e for e in root.findall("a:entry", NS)[1:]
+                                     if len(strip_html(e.findtext("a:content", "", NS))) >= 40][:per]):
+                self.store.add_comment({
+                    "id": "rd" + hashlib.sha1(e.findtext("a:id", "", NS).encode()).hexdigest()[:14],
+                    "thread_url": url, "author": (e.findtext("a:author/a:name", "", NS) or "").removeprefix("/u/"),
+                    "text": clip(strip_html(e.findtext("a:content", "", NS)), 700), "position": pos,
+                    "published": iso(parse_date(e.findtext("a:updated", None, NS)))})
 
     # ----
 
     def collect(self) -> None:
-        kinds = {"page": self.src_page, "sitemap": self.src_sitemap, "links": self.src_links,
-                 "github": self.src_github, "search": self.src_search}
+        adapters = {k[2:]: getattr(self, k) for k in dir(self) if k.startswith("a_")}
+        jobs = []
         for s in self.cfg["sources"]:
-            label = s["name"] + ("" if s["kind"] == "page" else f" ({s['kind']})")
-            self.run(label, kinds[s["kind"]], s)
-        self.run("Hacker News", self.disc_hn)
-        self.run("Google News", self.disc_gnews)
-        self.run("Reddit", self.disc_reddit)
-        self.run("GitHub search", self.disc_github)
-        self.run("DEV", self.disc_devto)
-        self.run("Lobsters", self.disc_lobsters)
-        self.run("HN top comments", self.disc_hn_threads)
-        # attach_hn upserts with source "?" only when the item already exists; drop any orphan.
-        self.store.db.execute("delete from items where source = '?'")
-        self.store.db.commit()
+            state = {"seen": self.store.seen(s["name"]) if s["kind"] == "sitemap" else set(),
+                     "has_rows": self.store.db.execute(
+                         "select 1 from items where source = ? limit 1", (s["name"],)).fetchone() is not None}
+            jobs.append((s, state, self.pool.submit(self._timed, adapters[s["kind"]], s, state)))
+        for s, state, fut in jobs:
+            rows, err, secs = fut.result()
+            for r in rows:
+                if r.get("url"):
+                    self.store.upsert(r)
+            if s["kind"] == "sitemap" and err is None:
+                self.store.mark_seen(s["name"], state.get("checked", []))
+            self.store.db.commit()
+            self.log(s["name"], len(rows), err, secs)
+        c = self.cfg.get("comments", {})
+        for name, fn in (("HN comments", self.hn_comments), ("Reddit comments", self.reddit_comments)):
+            t0 = time.time()
+            before = self.store.db.total_changes
+            try:
+                fn(c.get("per_thread", 4), c.get("hn_threads" if name.startswith("HN") else "reddit_threads", 6))
+                err = None
+            except Exception as e:
+                traceback.print_exc()
+                err = clip(str(e), 200)
+            self.store.db.commit()
+            self.log(name, self.store.db.total_changes - before, err, round(time.time() - t0, 1))
+
+    @staticmethod
+    def _timed(fn, s, state):
+        t0 = time.time()
+        try:
+            return fn(s, state), None, round(time.time() - t0, 1)
+        except Exception as e:
+            traceback.print_exc()
+            return [], clip(str(e), 200), round(time.time() - t0, 1)
+
+    def log(self, name, n, err, secs) -> None:
+        self.health.append({"name": name, "status": "error" if err else "ok", "error": err, "items": n, "secs": secs})
+        print(f"  {'error' if err else 'ok':5} {name:26} {n:4} items  {secs}s" + (f"  {err}" if err else ""))
 
 
 # --------------------------------------------------------------------------- render
 
 def render(cfg: dict, store: Store, health: list[dict] | None) -> Path:
-    since = iso(NOW - timedelta(days=cfg.get("window_days", 30)))
-    rows = store.db.execute(
-        """select * from items where official = 1 or kind = 'repo'
-             or coalesce(published, first_seen) >= ? or first_seen >= ? or updated_at >= ?""",
-        (since, since, since),
-    ).fetchall()
-    items = [dict(r) for r in rows]
+    since = iso(NOW - timedelta(days=cfg.get("window_days", 14)))
+    rows = [dict(r) for r in store.db.execute(
+        "select * from items where coalesce(published, first_seen) >= ?", (since,))]
+    for r in rows:  # clamp future-dated posts so they can't pin themselves to the top
+        if r["published"] and r["published"] > NOW_ISO:
+            r["published"] = NOW_ISO
+    stories = rank.build_stories(rows, cfg, NOW)
 
-    # Google News links are redirects, so they can't merge by URL. Drop them when the same
-    # headline already came in from a direct source.
-    def key(t):
-        return re.sub(r"[^a-z0-9]", "", (t or "").lower())[:48]
+    # Keep the page light: per local-ish day, only the strongest stories.
+    per_day = cfg.get("stories_per_day", 80)
+    by_day: dict[str, list[dict]] = {}
+    for s in sorted(stories, key=lambda s: -s["heat"]):
+        by_day.setdefault(s["published"][:10], []).append(s)
+    keep = {s["id"] for day in by_day.values() for s in day[:per_day]}
+    stories = [s for s in stories if s["id"] in keep]
 
-    direct = {key(i["title"]) for i in items if i["platform"] != "gnews"}
-    items = [i for i in items if i["platform"] != "gnews" or key(i["title"]) not in direct]
-
-    # Cross-posted reactions (same text in several subreddits) collapse into the earliest copy.
-    seen: dict[str, dict] = {}
-    deduped = []
-    for i in sorted(items, key=lambda i: i["published"] or i["first_seen"]):
-        if i["kind"] == "reaction" and i["text"]:
-            k = re.sub(r"[^a-z0-9]", "", i["text"].lower())[:160]
-            if k in seen:
-                seen[k]["crossposts"] = seen[k].get("crossposts", 1) + 1
-                continue
-            seen[k] = i
-        deduped.append(i)
-    items = deduped
+    threads = {v["discussion_url"] for s in stories for v in s["via"] if v.get("discussion_url")}
+    comments: dict[str, list[dict]] = {}
+    for c in store.db.execute("select * from comments order by thread_url, position"):
+        if c["thread_url"] in threads:
+            comments.setdefault(c["thread_url"], []).append(
+                {"author": c["author"], "text": c["text"], "published": c["published"]})
+    for s in stories:
+        s["comments"] = [dict(c, thread=v["discussion_url"], platform=v["platform"])
+                         for v in s["via"] for c in comments.get(v.get("discussion_url"), [])][:6]
 
     if health is None:
         last = store.db.execute("select stats from runs order by started desc limit 1").fetchone()
         health = json.loads(last["stats"]) if last else []
-    pages = [dict(r) for r in store.db.execute(
-        "select url, source, title, status, checked_at, changed_at from pages where source in (%s)"
-        % ",".join("?" * len(cfg["sources"])), [s["name"] for s in cfg["sources"]]).fetchall()]
-
-    sources = []
-    for s in cfg["sources"]:
-        label = s["name"] + ("" if s["kind"] == "page" else f" ({s['kind']})")
-        h = next((x for x in health if x["name"] == label), None)
-        pg = next((p for p in pages if p["url"] == s.get("url")), None)
-        n = sum(1 for i in items if i["source"] == s["name"])
-        sources.append({"name": s["name"], "kind": s["kind"], "url": s.get("url") or s.get("query"),
-                        "official": bool(s.get("official")), "status": h["status"] if h else None,
-                        "error": h["error"] if h else None, "items": n,
-                        "changed_at": pg["changed_at"] if pg else None})
-
-    first = store.db.execute("select min(started) from runs").fetchone()[0]
-    payload = {
-        "title": cfg["title"], "topic": cfg["topic"], "generated": NOW_ISO, "first_run": first or NOW_ISO,
-        "items": items, "sources": sources, "health": health,
-    }
+    payload = {"title": cfg["title"], "tagline": cfg.get("tagline", ""), "generated": NOW_ISO,
+               "topics": list(cfg.get("topics", {})), "stories": stories, "health": health}
     tpl = (ROOT / "template.html").read_text(encoding="utf-8")
-    blob = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
+    blob = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     out = tpl.replace("/*__DATA__*/null", blob).replace("__TITLE__", html.escape(cfg["title"]))
     SITE_DIR.mkdir(exist_ok=True)
     (SITE_DIR / "index.html").write_text(out, encoding="utf-8")
     (SITE_DIR / "data.json").write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"rendered {SITE_DIR / 'index.html'}  ({len(stories)} stories from {len(rows)} posts)")
     return SITE_DIR / "index.html"
 
 
@@ -713,20 +612,20 @@ def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     cfg = json.loads(Path(args.config).read_text(encoding="utf-8"))
-    store = Store(DB_PATH, cfg.get("title_strip"))
+    store = Store(DB_PATH)
     health = None
     if not args.render:
-        print(f"[{NOW_ISO}] collecting {cfg['topic']}")
+        print(f"[{NOW_ISO}] collecting {cfg['title']}")
         c = Collector(cfg, store)
         c.collect()
         health = c.health
         store.db.execute("insert or replace into runs values (?, ?, ?)",
                          (NOW_ISO, iso(datetime.now(timezone.utc)), json.dumps(health)))
         store.db.commit()
-    out = render(cfg, store, health)
-    total = store.db.execute("select count(*) from items").fetchone()[0]
+    render(cfg, store, health)
     errors = [h["name"] for h in (health or []) if h["status"] != "ok"]
-    print(f"rendered {out}  ({total} items in db" + (f"; errors: {', '.join(errors)}" if errors else "") + ")")
+    if errors:
+        print("errors: " + ", ".join(errors))
     return 0
 
 
