@@ -37,7 +37,7 @@
     {"name": "Simon Willison", "kind": "feed", "type": "writer", "dedicated": false, "url": "https://simonwillison.net/atom/everything/"},
     {"name": "Latent Space", "kind": "feed", "type": "writer", "url": "https://www.latent.space/feed"},
     {"name": "Interconnects", "kind": "feed", "type": "writer", "url": "https://www.interconnects.ai/feed"},
-    {"name": "Import AI", "kind": "feed", "type": "writer", "url": "https://importai.substack.com/feed"},
+    {"name": "Import AI", "kind": "feed", "type": "writer", "url": "https://jack-clark.net/feed/"},
 
     {"name": "Google News", "kind": "gnews", "days": 3, "per_query": 12,
      "queries": ["Google DeepMind Gemini", "Meta AI Llama", "xAI Grok", "DeepSeek model", "OpenAI launches",
