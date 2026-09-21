@@ -1,0 +1,38 @@
+{
+  "title": "Jev Daily",
+  "topic": "TypeSafe AI · Jev · System One models",
+  "relevance": "\\bjev\\b|typesafe(?:\\.ai| ai)|system[- ]one model",
+  "window_days": 30,
+  "title_strip": "\\s+[-|]\\s+TypeSafe AI Blog$",
+
+  "sources": [
+    {"name": "TypeSafe blog", "kind": "sitemap", "url": "https://typesafe.ai/sitemap.xml", "match": "/blog/", "official": true},
+    {"name": "TypeSafe docs", "kind": "sitemap", "url": "https://docs.typesafe.ai/sitemap.xml", "official": true},
+    {"name": "TypeSafe docs", "kind": "page", "url": "https://docs.typesafe.ai/llms.txt", "title": "Docs index (llms.txt)", "official": true, "reference": true},
+    {"name": "TypeSafe evals", "kind": "page", "url": "https://evals.typesafe.ai/", "title": "TypeSafe workflow evals", "official": true, "reference": true},
+    {"name": "TypeSafe blog", "kind": "page", "url": "https://typesafe.ai/blog/introducing-system-one-models-and-jev", "official": true},
+
+    {"name": "TechCrunch", "kind": "page", "url": "https://techcrunch.com/2026/09/18/a-new-kind-of-ai-model-from-a-chatgpt-inventor-is-thrilling-developers/"},
+    {"name": "SiliconANGLE", "kind": "page", "url": "https://siliconangle.com/2026/09/16/typesafe-ai-exits-stealth-with-40m-to-build-ai-for-use-by-software/"},
+    {"name": "DataCamp", "kind": "page", "url": "https://www.datacamp.com/blog/system-one-models-jev"},
+    {"name": "Arize", "kind": "page", "url": "https://arize.com/blog/typesafe-jev-llm-judge/"},
+    {"name": "Lindfors", "kind": "page", "url": "https://lindfors.no/blog/a-first-look-at-typesafes-jev/"},
+    {"name": "primeline", "kind": "page", "url": "https://primeline.cc/blog/typesafe-jev-pre-registered-test"},
+    {"name": "XenoSpectrum", "kind": "page", "url": "https://xenospectrum.com/en/jev-typesafe-bert-classifier-decomposition/"},
+    {"name": "backnotprop", "kind": "links", "url": "https://backnotprop.com/", "match": "/blog/"},
+    {"name": "mini-jev", "kind": "github", "repos": ["r-ms/mini-jev", "UpHash-Network/mini-jev", "deep-diver/mini-jev", "RichardoMrMu/jev-mini"]},
+    {"name": "Southbridge", "kind": "page", "url": "https://www.southbridge.ai/blog/jev-entity-resolution", "title": "Using system-one models inside high-throughput data pipelines", "published": "2026-09-20T00:00:00Z"},
+    {"name": "Von", "kind": "github", "repos": ["wfzyx/von"]}
+  ],
+
+  "discovery": {
+    "hn_queries": ["jev", "typesafe"],
+    "reddit_queries": ["typesafe OR jev"],
+    "google_news_queries": ["TypeSafe Jev", "\"System One\" TypeSafe"],
+    "github_queries": ["jev typesafe", "jev system one"],
+    "devto_tags": ["jev", "typesafe"],
+    "lobsters_tags": ["ai", "ml", "programming"],
+    "hn_threads_with_comments": 5,
+    "hn_comments_per_thread": 8
+  }
+}

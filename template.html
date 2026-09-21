@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fbfcfd; --ink: #1a2233; --muted: #677083; --faint: #9aa2b1; --line: #e3e6ec; --hover: #f1f3f7;
+  --link: #2448c9; --visited: #6a4bb8;
+  --pos: #1f8a70; --neg: #c2415d; --mix: #b7791f; --neu: #8a93a3; --new: #2448c9;
+  --sans: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161f; --ink: #e6e9ef; --muted: #9aa3b4; --faint: #6b7385; --line: #262d3a; --hover: #1a202b;
+    --link: #8fb0ff; --visited: #b9a3f0; --pos: #4cc9a4; --neg: #f07891; --mix: #e3b04b; --neu: #8a93a3; --new: #8fb0ff;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161f; --ink: #e6e9ef; --muted: #9aa3b4; --faint: #6b7385; --line: #262d3a; --hover: #1a202b;
+  --link: #8fb0ff; --visited: #b9a3f0; --pos: #4cc9a4; --neg: #f07891; --mix: #e3b04b; --neu: #8a93a3; --new: #8fb0ff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+a { color: inherit; text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; border-radius: 3px; }
+.wrap { max-width: 780px; margin: 0 auto; padding: 28px 16px 64px; }
+
+header h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+header .sub { color: var(--muted); margin: 2px 0 0; }
+
+/* The readout: today's reaction mix, shaped like a Jev Choice answer. */
+.readout { margin: 22px 0 8px; font: 13px/1.6 var(--mono); border-left: 2px solid var(--line); padding: 2px 0 2px 14px; }
+.readout .q { color: var(--muted); }
+.readout .q b { color: var(--ink); font-weight: 500; }
+.dist { display: grid; grid-template-columns: 6.5em 1fr 3.2em; gap: 2px 12px; align-items: center; margin-top: 6px; max-width: 520px; }
+.dist .bar { height: 8px; background: var(--hover); border-radius: 4px; overflow: hidden; }
+.dist .bar i { display: block; height: 100%; border-radius: 4px; width: 0; transition: width .7s cubic-bezier(.2,.7,.2,1); }
+.dist .p { text-align: right; color: var(--muted); }
+.dist .lbl.win { color: var(--ink); font-weight: 500; }
+.readout .foot { color: var(--faint); margin-top: 6px; }
+
+nav.tabs { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 26px 0 0; border-bottom: 1px solid var(--line); }
+nav.tabs button { font: inherit; background: none; border: 0; color: var(--muted); padding: 8px 0 10px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 500; }
+nav.tabs .n { color: var(--faint); font-size: 12px; margin-left: 3px; }
+
+.filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 12px 0; color: var(--muted); font-size: 13px; }
+.filters[hidden] { display: none; }
+.filters select, .filters input { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+.filters input { flex: 1 1 180px; min-width: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-size: 12.5px; border: 1px solid var(--line); background: none; color: var(--muted); border-radius: 999px; padding: 2px 10px; cursor: pointer; }
+.chip[aria-pressed="true"] { color: var(--ink); border-color: var(--ink); }
+
+ol.list { list-style: none; margin: 0; padding: 0; counter-reset: r; }
+ol.list > li { display: grid; grid-template-columns: 2.2em 3.2em 1fr; gap: 0 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+ol.list > li::before { counter-increment: r; content: counter(r) "."; color: var(--faint); text-align: right; font-size: 13px; padding-top: 1px; }
+.pts { text-align: right; font-size: 13px; color: var(--muted); padding-top: 1px; font-variant-numeric: tabular-nums; }
+.pts b { display: block; color: var(--ink); font-weight: 500; font-size: 14px; }
+.t { font-weight: 500; }
+.t a:visited { color: var(--visited); }
+.dom { color: var(--faint); font-size: 13px; margin-left: 4px; font-weight: 400; }
+.meta { color: var(--muted); font-size: 13px; margin-top: 2px; display: flex; flex-wrap: wrap; gap: 0 12px; }
+.meta a { color: var(--muted); }
+.desc { color: var(--muted); font-size: 14px; margin-top: 4px; max-width: 68ch; }
+.flag { font-size: 11.5px; font-weight: 600; padding: 0 6px; border-radius: 4px; margin-left: 6px; vertical-align: 1px; }
+.flag.new { color: var(--new); border: 1px solid currentColor; }
+.flag.upd { color: var(--mix); border: 1px solid currentColor; }
+.flag.off { color: var(--muted); border: 1px solid var(--line); font-weight: 500; }
+
+/* reactions */
+ol.list > li.rx { grid-template-columns: 2.2em 1fr; }
+.quote { border-left: 3px solid var(--neu); padding: 1px 0 1px 12px; max-width: 70ch; }
+.quote.positive { border-color: var(--pos); } .quote.skeptical { border-color: var(--neg); } .quote.mixed { border-color: var(--mix); }
+.quote p { margin: 0; white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.quote.open p { -webkit-line-clamp: unset; display: block; }
+.quote .more { font: inherit; font-size: 13px; background: none; border: 0; padding: 0; color: var(--link); cursor: pointer; margin-top: 2px; }
+.tone { font-size: 12.5px; }
+.tone.positive { color: var(--pos); } .tone.skeptical { color: var(--neg); } .tone.mixed { color: var(--mix); } .tone.neutral { color: var(--neu); }
+
+/* sources */
+table.src { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+table.src th { text-align: left; font-weight: 500; color: var(--muted); font-size: 13px; padding: 6px 8px 6px 0; border-bottom: 1px solid var(--line); }
+table.src td { padding: 8px 8px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.src td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.ok { color: var(--pos); } .err { color: var(--neg); } .dim { color: var(--faint); }
+
+.empty { padding: 40px 0; color: var(--muted); }
+footer { margin-top: 36px; color: var(--faint); font-size: 13px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+footer button { font: inherit; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0; }
+
+@media (max-width: 560px) {
+  ol.list > li { grid-template-columns: 2.6em 1fr; }
+  ol.list > li::before { display: none; }
+  ol.list > li.rx { grid-template-columns: 1fr; }
+  .dist { grid-template-columns: 6em 1fr 3em; }
+  table.src .hide-sm { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .dist .bar i { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="title"></h1>
+    <p class="sub" id="sub"></p>
+  </header>
+
+  <section class="readout" id="readout" aria-label="Reaction mix"></section>
+
+  <nav class="tabs" role="tablist" id="tabs"></nav>
+  <div class="filters" id="filters">
+    <label>Period
+      <select id="period">
+        <option value="1">Last 24 hours</option>
+        <option value="3">Last 3 days</option>
+        <option value="7" selected>Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="0">Everything</option>
+      </select>
+    </label>
+    <div class="chips" id="chips"></div>
+    <input id="q" type="search" placeholder="Filter by keyword" aria-label="Filter by keyword">
+  </div>
+  <main id="main"></main>
+
+  <footer>
+    <span id="gen"></span>
+    <button id="theme" type="button">Switch theme</button>
+  </footer>
+</div>
+
+<script>
+const D = /*__DATA__*/null;
+const GEN = new Date(D.generated);
+const HOUR = 3600e3;
+const PLATFORM = { web: "Web", gnews: "News", hn: "Hacker News", reddit: "Reddit", github: "GitHub", devto: "DEV", lobsters: "Lobsters" };
+const TONES = ["positive", "skeptical", "mixed", "neutral"];
+
+const store = {
+  get(k, d) { try { return localStorage.getItem("jevdaily:" + k) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("jevdaily:" + k, v); } catch {} },
+};
+
+const state = { tab: store.get("tab", "front"), period: +store.get("period", 7), q: "", platforms: new Set(), tones: new Set() };
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const when = i => new Date(i.published || i.first_seen);
+const dom = u => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
+function ago(d) {
+  const h = (GEN - d) / HOUR;
+  if (h < 1) return Math.max(1, Math.round(h * 60)) + "m ago";
+  if (h < 24) return Math.round(h) + "h ago";
+  const days = Math.round(h / 24);
+  return days < 45 ? days + "d ago" : d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+// New = published in the last day, or first spotted in the last day (but not by the very first run,
+// which saw the whole backlog at once).
+const isNew = i => (i.published ? (GEN - new Date(i.published)) < 26 * HOUR
+  : (GEN - new Date(i.first_seen)) < 26 * HOUR && i.first_seen !== D.first_run);
+const isUpd = i => i.updated_at && i.kind !== "repo" && (GEN - new Date(i.updated_at)) < 26 * HOUR && !isNew(i);
+
+// HN-style gravity so fresh, discussed items rise; official posts get a floor.
+function rank(i) {
+  const pts = (i.score || 0) + (i.comments || 0) / 2 + (i.official ? 20 : 3);
+  const h = i.published ? Math.max(0, (GEN - when(i)) / HOUR) : 96;
+  return pts / Math.pow(h + 2, 1.2);
+}
+
+const TABS = [
+  { id: "front", label: "Front page", pick: i => i.kind === "news" },
+  { id: "reactions", label: "Reactions", pick: i => i.kind === "reaction" },
+  { id: "official", label: "TypeSafe", pick: i => i.official },
+  { id: "repos", label: "Repos", pick: i => i.kind === "repo" },
+  { id: "sources", label: "Sources" },
+];
+
+function inPeriod(i) {
+  if (!state.period) return true;
+  const cut = GEN - state.period * 24 * HOUR;
+  return when(i) >= cut || new Date(i.first_seen) >= cut || (i.updated_at && new Date(i.updated_at) >= cut);
+}
+function matchQ(i) {
+  if (!state.q) return true;
+  const hay = [i.title, i.text, i.source, i.author, i.url].join(" ").toLowerCase();
+  return state.q.toLowerCase().split(/\s+/).every(w => hay.includes(w));
+}
+function visible(tab) {
+  return D.items.filter(i => tab.pick(i) && inPeriod(i) && matchQ(i)
+    && (!state.platforms.size || state.platforms.has(i.platform))
+    && (!state.tones.size || state.tones.has(i.tone)));
+}
+
+function renderHeader() {
+  document.title = D.title;
+  document.getElementById("title").textContent = D.title;
+  const day = GEN.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  document.getElementById("sub").textContent = `${D.topic}. Updated ${day}.`;
+  document.getElementById("gen").textContent =
+    `Collected ${GEN.toLocaleString()} from ${D.sources.length} tracked sources and 6 discovery feeds.`;
+}
+
+function renderReadout() {
+  const cut = GEN - 7 * 24 * HOUR;
+  const rx = D.items.filter(i => i.kind === "reaction" && when(i) >= cut);
+  const n = rx.length || 1;
+  const p = Object.fromEntries(TONES.map(t => [t, rx.filter(i => i.tone === t).length / n]));
+  const top = TONES.slice(0, 3).reduce((a, b) => (p[b] > p[a] ? b : a));
+  const fresh = D.items.filter(i => i.kind !== "reaction" && isNew(i)).length;
+  const freshRx = D.items.filter(i => i.kind === "reaction" && isNew(i)).length;
+  const color = { positive: "var(--pos)", skeptical: "var(--neg)", mixed: "var(--mix)", neutral: "var(--neu)" };
+  document.getElementById("readout").innerHTML = `
+    <div class="q">choice(<b>"How are people reacting this week?"</b>)</div>
+    <div class="dist">${TONES.map(t => `
+      <span class="lbl ${t === top ? "win" : ""}">${t}</span>
+      <span class="bar"><i data-w="${(p[t] * 100).toFixed(1)}" style="background:${color[t]}"></i></span>
+      <span class="p">${p[t].toFixed(2)}</span>`).join("")}
+    </div>
+    <div class="foot">${rx.length} reactions this week, ${freshRx} of them new today. ${fresh} new stories today.<br>Tone comes from a keyword heuristic, not from Jev.</div>`;
+  requestAnimationFrame(() => document.querySelectorAll(".dist i").forEach(el => (el.style.width = el.dataset.w + "%")));
+}
+
+function renderTabs() {
+  document.getElementById("tabs").innerHTML = TABS.map(t => {
+    const n = t.pick ? D.items.filter(i => t.pick(i) && inPeriod(i)).length : D.sources.length;
+    return `<button role="tab" aria-selected="${t.id === state.tab}" data-tab="${t.id}">${t.label}<span class="n">${n}</span></button>`;
+  }).join("");
+}
+
+function renderChips() {
+  const tab = TABS.find(t => t.id === state.tab);
+  const el = document.getElementById("chips");
+  const filters = document.getElementById("filters");
+  filters.hidden = !tab.pick;
+  if (!tab.pick) return;
+  const base = D.items.filter(i => tab.pick(i) && inPeriod(i));
+  const plats = [...new Set(base.map(i => i.platform))];
+  let html = plats.length > 1 ? plats.map(p =>
+    `<button class="chip" data-plat="${p}" aria-pressed="${state.platforms.has(p)}">${PLATFORM[p] || p}</button>`).join("") : "";
+  if (state.tab === "reactions")
+    html += TONES.map(t => `<button class="chip" data-tone="${t}" aria-pressed="${state.tones.has(t)}"><span class="tone ${t}">●</span> ${t}</button>`).join("");
+  el.innerHTML = html;
+}
+
+function storyRow(i) {
+  const flags = (isNew(i) ? `<span class="flag new">new</span>` : "") + (isUpd(i) ? `<span class="flag upd">updated</span>` : "")
+    + (i.official && state.tab !== "official" ? `<span class="flag off">official</span>` : "");
+  const pts = i.score != null && i.score > 0 ? `<b>${i.score}</b>${i.kind === "repo" ? "stars" : "pts"}` : "";
+  const meta = [
+    `<span>${esc(i.source)}${i.platform !== "web" && i.platform !== "gnews" && PLATFORM[i.platform] !== i.source ? " on " + PLATFORM[i.platform] : ""}</span>`,
+    i.author ? `<span>by ${esc(i.author)}</span>` : "",
+    `<span title="${when(i).toLocaleString()}">${i.kind === "repo" && i.updated_at ? "pushed " + ago(new Date(i.updated_at))
+      : i.published ? ago(when(i)) : i.kind === "reference" ? (i.updated_at ? "changed " + ago(new Date(i.updated_at)) : "watched for changes") : "spotted " + ago(when(i))}</span>`,
+    i.discussion_url ? `<a href="${esc(i.discussion_url)}">${i.comments || 0} ${i.kind === "repo" ? "open issues" : "comments"}</a>` : "",
+  ].filter(Boolean).join("");
+  return `<li><span class="pts">${pts}</span><div>
+    <div class="t"><a href="${esc(i.url)}">${esc(i.title || i.url)}</a><span class="dom">${esc(i.context && i.platform === "gnews" ? i.context : dom(i.url))}</span>${flags}</div>
+    <div class="meta">${meta}</div>
+    ${i.text && state.tab !== "front" ? `<div class="desc">${esc(i.text)}</div>` : ""}
+  </div></li>`;
+}
+
+function reactionRow(i) {
+  return `<li class="rx"><div>
+    <div class="quote ${i.tone}"><p>${esc(i.text || i.title)}</p><button class="more" type="button" hidden>Show all</button></div>
+    <div class="meta" style="margin-top:6px">
+      <span class="tone ${i.tone}">● ${i.tone}</span>
+      <span>${esc(i.author || "anon")} on ${esc(PLATFORM[i.platform] === i.source ? i.source : (PLATFORM[i.platform] + " " + i.source))}</span>
+      <a href="${esc(i.url)}" title="${when(i).toLocaleString()}">${ago(when(i))}</a>
+      ${i.context ? `<span>in “${esc(i.context.length > 70 ? i.context.slice(0, 68) + "…" : i.context)}”</span>` : ""}
+      ${i.crossposts ? `<span>cross-posted to ${i.crossposts} places</span>` : ""}
+      ${isNew(i) ? `<span class="flag new">new</span>` : ""}
+    </div>
+  </div></li>`;
+}
+
+function sourcesTable() {
+  const rows = D.sources.map(s => `<tr>
+    <td>${s.url && s.kind !== "search" ? `<a href="${esc(s.url)}">${esc(s.name)}</a>` : esc(s.name)}
+        <div class="dim hide-sm" style="font-size:12.5px">${esc(s.kind === "search" ? "found by searching “" + s.url + "”" : s.kind === "page" ? dom(s.url) : s.kind + " · " + (dom(s.url) || "github"))}</div></td>
+    <td class="num">${s.items}</td>
+    <td>${s.status === "ok" ? `<span class="ok">ok</span>` : s.status ? `<span class="err" title="${esc(s.error)}">failed</span>` : `<span class="dim">not run</span>`}
+        ${s.error ? `<div class="dim" style="font-size:12.5px">${esc(s.error)}</div>` : ""}</td>
+    <td class="hide-sm">${s.changed_at ? ago(new Date(s.changed_at)) : `<span class="dim">no change seen</span>`}</td>
+  </tr>`).join("");
+  const feeds = D.health.filter(h => !D.sources.some(s => h.name.startsWith(s.name)));
+  const feedRows = feeds.map(h => `<tr><td>${esc(h.name)}</td><td class="num">${h.changes}</td>
+    <td>${h.status === "ok" ? `<span class="ok">ok</span>` : `<span class="err">failed</span><div class="dim" style="font-size:12.5px">${esc(h.error)}</div>`}</td><td class="hide-sm dim">${h.secs}s</td></tr>`).join("");
+  return `<table class="src"><thead><tr><th>Tracked source</th><th class="num">Items</th><th>Last run</th><th class="hide-sm">Page last changed</th></tr></thead><tbody>${rows}</tbody></table>
+    <table class="src" style="margin-top:28px"><thead><tr><th>Discovery feed</th><th class="num">Rows written</th><th>Last run</th><th class="hide-sm">Time</th></tr></thead><tbody>${feedRows}</tbody></table>`;
+}
+
+function renderMain() {
+  const tab = TABS.find(t => t.id === state.tab);
+  const main = document.getElementById("main");
+  if (!tab.pick) { main.innerHTML = sourcesTable(); return; }
+  let list = visible(tab);
+  if (tab.id === "reactions") list.sort((a, b) => when(b) - when(a) || (b.score || 0) - (a.score || 0));
+  else if (tab.id === "repos") list.sort((a, b) => (b.score || 0) - (a.score || 0));
+  else if (tab.id === "official") list.sort((a, b) => when(b) - when(a));
+  else list.sort((a, b) => rank(b) - rank(a));
+  if (!list.length) {
+    main.innerHTML = `<p class="empty">Nothing matches in this period. Widen the period or clear the filters.</p>`;
+    return;
+  }
+  main.innerHTML = `<ol class="list">${list.map(tab.id === "reactions" ? reactionRow : storyRow).join("")}</ol>`;
+  main.querySelectorAll(".quote").forEach(q => {
+    const p = q.querySelector("p"), b = q.querySelector(".more");
+    if (p.scrollHeight > p.clientHeight + 2) {
+      b.hidden = false;
+      b.onclick = () => { const o = q.classList.toggle("open"); b.textContent = o ? "Show less" : "Show all"; };
+    }
+  });
+}
+
+function render() { renderTabs(); renderChips(); renderMain(); }
+
+document.getElementById("tabs").addEventListener("click", e => {
+  const b = e.target.closest("[data-tab]"); if (!b) return;
+  state.tab = b.dataset.tab; state.platforms.clear(); state.tones.clear(); store.set("tab", state.tab); render();
+});
+document.getElementById("chips").addEventListener("click", e => {
+  const b = e.target.closest(".chip"); if (!b) return;
+  const set = b.dataset.plat ? state.platforms : state.tones, v = b.dataset.plat || b.dataset.tone;
+  set.has(v) ? set.delete(v) : set.add(v); render();
+});
+const period = document.getElementById("period");
+period.value = String(state.period);
+period.addEventListener("change", () => { state.period = +period.value; store.set("period", period.value); render(); });
+document.getElementById("q").addEventListener("input", e => { state.q = e.target.value.trim(); renderMain(); });
+document.getElementById("theme").addEventListener("click", () => {
+  const dark = document.documentElement.dataset.theme
+    ? document.documentElement.dataset.theme === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.dataset.theme = dark ? "light" : "dark";
+  store.set("theme", document.documentElement.dataset.theme);
+});
+const saved = store.get("theme", ""); if (saved) document.documentElement.dataset.theme = saved;
+if (!TABS.some(t => t.id === state.tab)) state.tab = "front";
+
+renderHeader(); renderReadout(); render();
+</script>
+</body>
+</html>
