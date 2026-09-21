@@ -22,6 +22,30 @@ python -m unittest test_rank   # ranking/merging/filter tests
 The scheduled task runs `run.cmd`, which appends to `logs\YYYY-MM-DD.log` and keeps two weeks of logs.
 If the PC is off at 07:30, the task runs as soon as the PC is back on.
 
+## Hosting on a Linux VM (private, over Tailscale)
+
+The intended setup: a small Linux VM on your Tailscale network runs the collector daily and serves the
+page to the tailnet only. No sudo, Docker or open ports needed.
+
+```sh
+# on the VM
+git clone https://github.com/prasannaJosium/ai-daily-digest.git ~/apps/ai-daily
+cd ~/apps/ai-daily
+./run.sh             # first collection (backfills 14 days of HN, ~1 minute)
+./install-cron.sh    # daily run at 02:00 UTC (07:30 IST) + keep the web server up
+./serve.sh           # start the web server now
+```
+
+- Page: `http://<vm-host>:8420/` from any device on the tailnet. `serve.sh` binds to the VM's Tailscale
+  address only, so the page is not reachable from the internet. Port: `AIDAILY_PORT=9090 ./serve.sh`.
+- Schedule (user crontab): `run.sh` daily at 02:00 UTC (change it with `AIDAILY_CRON="0 1 * * *" ./install-cron.sh`);
+  `serve.sh` at boot and every 5 minutes, which starts the web server only if it isn't already running.
+  `./install-cron.sh --uninstall` removes both.
+- Logs: `logs/YYYY-MM-DD.log` (collector) and `logs/serve.log` (web server).
+- Deploy a change: push, then on the VM `git pull --ff-only && python3 collector.py --render`.
+
+The Windows scheduled task (`install-task.ps1`, above) is the alternative for running it on a Windows PC.
+
 ## The page
 
 - **top**: the day's front page. Stories from the last 12 hours count as "today" with no decay; after
