@@ -1,5 +1,5 @@
 #!/bin/sh
-# Serves site/ on the Tailscale address only (private to the tailnet). Safe to run repeatedly:
+# Serves site/ (plus the saved-stories API, see server.py) on the Tailscale address only (private to the tailnet). Safe to run repeatedly:
 # cron calls it at boot and every 5 minutes, and it starts the server only if it isn't running.
 cd "$(dirname "$0")" || exit 1
 PORT="${AIDAILY_PORT:-8420}"
@@ -9,5 +9,5 @@ if ss -ltn "sport = :$PORT" | grep -q LISTEN; then
     exit 0
 fi
 mkdir -p logs site
-nohup python3 -m http.server "$PORT" --bind "$BIND" --directory site >> logs/serve.log 2>&1 &
+nohup python3 server.py --bind "$BIND" --port "$PORT" >> logs/serve.log 2>&1 &
 echo "serving http://$BIND:$PORT/"

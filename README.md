@@ -36,7 +36,8 @@ cd ~/apps/ai-daily
 ./serve.sh           # start the web server now
 ```
 
-- Page: `http://<vm-host>:8420/` from any device on the tailnet. `serve.sh` binds to the VM's Tailscale
+- Page: `http://<vm-host>:8420/` from any device on the tailnet. `serve.sh` runs `server.py` (the page plus the
+  saved-stories API) bound to the VM's Tailscale
   address only, so the page is not reachable from the internet. Port: `AIDAILY_PORT=9090 ./serve.sh`.
 - Schedule (user crontab): `run.sh` daily at 02:00 UTC (change it with `AIDAILY_CRON="0 1 * * *" ./install-cron.sh`);
   `serve.sh` at boot and every 5 minutes, which starts the web server only if it isn't already running.
@@ -56,7 +57,16 @@ The Windows scheduled task (`install-task.ps1`, above) is the alternative for ru
 - Each story's subline shows where it appeared (HN points and comments, its position in Reddit's
   top-of-day, Lobsters, HF upvotes, GitHub stars, which labs or outlets published it). Each of those
   links to that platform's thread. **discuss** expands the top comments from the biggest HN and Reddit threads.
-- The footer has search and a per-source health table.
+- **save** under any story keeps it in the **saved** tab, even after it drops out of the 14-day window.
+- **Search** (footer box, or press `/`) filters whatever view you're on and is part of the URL, so every
+  search can be bookmarked: `#q/mcp`, `#t/agents/q/mcp`, `#past/2026-09-20/q/qwen`. Words must all match
+  (at the start of a word, so `rag` doesn't match "storage"), `"quoted phrases"` match exactly, and
+  `qwen|deepseek` matches either. It looks at titles, summaries, sites, sources and tags.
+- **pin as topic** turns the current search into your own topic tab in the orange bar (`#u/<name>`),
+  ranked like the built-in topics, with **edit** and **unpin**.
+- Saved stories and pinned topics are stored on the server in `data/user.json` (`server.py`), so they're the
+  same on every device. When the page is opened as a plain file instead, they're kept in that browser only.
+- The footer also has a per-source health table.
 
 ## Where stories come from
 

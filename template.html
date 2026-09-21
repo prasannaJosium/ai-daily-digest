@@ -62,8 +62,6 @@ ol.stories > li { display: grid; grid-template-columns: 32px 1fr; padding: 0 0 7
 .sub a:hover { text-decoration: underline; }
 .sub .pipe { padding: 0 3px; }
 .sub .hot { color: var(--ink); }
-.sub button.discuss { font: inherit; background: none; border: 0; padding: 0; color: inherit; cursor: pointer; }
-.sub button.discuss:hover { text-decoration: underline; }
 .comments { margin: 6px 0 4px; padding: 6px 10px; background: var(--comment-bg); border-left: 2px solid var(--line);
   font-size: 12px; max-width: 760px; }
 .comments[hidden] { display: none; }
@@ -91,6 +89,19 @@ footer table { border-collapse: collapse; margin-top: 6px; }
 footer td { padding: 1px 8px; }
 footer td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
+.linkish { font: inherit; background: none; border: 0; padding: 0; color: inherit; cursor: pointer; }
+.linkish:hover { text-decoration: underline; }
+.sub .save.on { color: var(--mark); }
+nav a.mine { font-style: italic; }
+nav .mine-sep { padding: 0 6px; opacity: .6; }
+.matches { margin-top: 4px; }
+.intro code, .daynav code { font-size: 11.5px; }
+.pinform { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; color: var(--sub); }
+.pinform[hidden] { display: none; }
+.pinform input { font: inherit; font-size: 12px; background: var(--input); color: var(--ink); border: 1px solid var(--line); padding: 2px 4px; width: 14em; max-width: 60vw; }
+.pinform button[type=submit] { font: inherit; font-size: 12px; }
+footer .note { margin-top: 6px; }
+
 @media (max-width: 750px) {
   .wrap { margin: 0; }
   header { padding: 6px 16px; }
@@ -114,7 +125,8 @@ footer td.num { text-align: right; font-variant-numeric: tabular-nums; }
   </header>
   <main id="main"></main>
   <footer>
-    <label>Search: <input id="q" type="search" autocomplete="off" placeholder="titles, sites, sources"></label>
+    <label>Search: <input id="q" type="search" autocomplete="off" placeholder="words, &quot;phrases&quot;, a|b   ( / )"></label>
+    <div class="note" id="note"></div>
     <div class="health" id="health"></div>
   </footer>
 </div>
@@ -130,7 +142,109 @@ const PLATFORM = { hn: "HN", reddit: "Reddit", lobsters: "Lobsters", hf_papers: 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const stories = DATA.stories.map((s) => ({ ...s, t: new Date(s.published) }));
+const byId = new Map(stories.map((s) => [s.id, s]));
 const generated = new Date(DATA.generated);
+
+/* ---------- your saved stories and pinned topics
+   Synced through the VM server (server.py) when the page is served by it; otherwise kept in this browser. */
+const LOCAL_KEY = "ai-daily-user";
+const user = { saved: {}, topics: [], mode: "local", error: "" };
+
+async function loadUser() {
+  if (location.protocol.startsWith("http")) {
+    try {
+      const r = await fetch("api/state", { cache: "no-store" });
+      if (r.ok) { Object.assign(user, await r.json(), { mode: "server" }); return; }
+    } catch (_) { /* no server: fall back to this browser */ }
+  }
+  try { Object.assign(user, JSON.parse(localStorage.getItem(LOCAL_KEY) || "{}")); } catch (_) {}
+  user.mode = "local";
+}
+
+async function send(method, path, body) {
+  if (user.mode !== "server") {
+    try { localStorage.setItem(LOCAL_KEY, JSON.stringify({ saved: user.saved, topics: user.topics })); } catch (_) {}
+    return true;
+  }
+  try {
+    const r = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "HTTP " + r.status);
+    user.error = "";
+    return true;
+  } catch (e) {
+    user.error = "Couldn't save to the server (" + e.message + "). Nothing was changed.";
+    return false;
+  }
+}
+
+const snapshot = ({ t, comments, rank, ...rest }) => rest;
+
+async function toggleSave(id) {
+  const prev = user.saved[id];
+  if (prev) {
+    delete user.saved[id];
+    render();
+    if (!(await send("POST", "api/unsave", { id }))) user.saved[id] = prev;
+  } else {
+    const s = byId.get(id);
+    if (!s) return;
+    user.saved[id] = { ...snapshot(s), saved_at: new Date().toISOString() };
+    render();
+    if (!(await send("POST", "api/save", snapshot(s)))) delete user.saved[id];
+  }
+  render();
+}
+
+async function setTopics(next) {
+  const prev = user.topics;
+  user.topics = next;
+  render();
+  if (!(await send("PUT", "api/topics", next))) { user.topics = prev; render(); }
+}
+
+const slug = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "topic";
+
+/* ---------- search: words must all match (at a word start), "quoted phrases" match exactly, a|b matches either */
+const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function matcher(q) {
+  const tokens = (q || "").toLowerCase().match(/(?:"[^"]*"|[^\s"])+/g) || [];
+  const terms = tokens.map((tok) => (tok.match(/(?:"[^"]*"|[^|"])+/g) || [])
+    .map((a) => a.replace(/"/g, "").trim()).filter(Boolean)).filter((alts) => alts.length);
+  if (!terms.length) return null;
+  const res = terms.map((alts) => new RegExp("(?:^|[^a-z0-9])(?:" + alts.map(escRe).join("|") + ")"));
+  return (s) => res.every((re) => re.test(haystack(s)));
+}
+const hay = new WeakMap();
+function haystack(s) {
+  if (!hay.has(s)) {
+    hay.set(s, [s.title, s.text, s.domain, (s.tags || []).join(" "), (s.via || []).map((v) => v.source).join(" ")]
+      .join(" \n ").toLowerCase());
+  }
+  return hay.get(s);
+}
+
+/* ---------- routes: #<view>[/<arg>][/q/<search>][/p/<page>] */
+const VIEWS_WITH_ARG = new Set(["past", "t", "u", "site"]);
+function route() {
+  const parts = (location.hash.slice(1) || "top").split("/").map((p) => { try { return decodeURIComponent(p); } catch (_) { return p; } });
+  if (parts[0] === "q" || parts[0] === "p") parts.unshift("top");  // #q/mcp = the front page, searched
+  const r = { view: parts[0] || "top", arg: "", q: "", page: 1 };
+  let i = 1;
+  if (VIEWS_WITH_ARG.has(r.view) && parts[i] !== undefined && parts[i] !== "q" && parts[i] !== "p") r.arg = parts[i++];
+  while (i < parts.length) {
+    if (parts[i] === "q") { r.q = parts[i + 1] || ""; i += 2; }
+    else if (parts[i] === "p") { r.page = Math.max(1, parseInt(parts[i + 1], 10) || 1); i += 2; }
+    else i++;
+  }
+  return r;
+}
+function link(r, over = {}) {
+  const x = { ...r, ...over };
+  let h = "#" + x.view + (x.arg ? "/" + encodeURIComponent(x.arg) : "");
+  if (x.q) h += "/q/" + encodeURIComponent(x.q);
+  if (x.page > 1) h += "/p/" + x.page;
+  return h;
+}
 
 function ago(d) {
   const m = Math.max(1, Math.round((generated - d) / 60000));
@@ -147,7 +261,7 @@ const dayLabel = (k) => new Date(k + "T12:00").toLocaleDateString(undefined, { w
 function viaBits(s) {
   const seen = new Set();
   const bits = [];
-  for (const v of s.via) {
+  for (const v of s.via || []) {
     const key = v.platform === "web" || v.platform === "gnews" ? "src:" + v.source : v.platform + ":" + (v.source || "");
     if (seen.has(key)) continue;
     seen.add(key);
@@ -170,42 +284,46 @@ function viaBits(s) {
 
 function row(s, n) {
   const pipe = '<span class="pipe">|</span>';
-  const tags = s.tags.map((t) => `<a href="#t/${t}">${esc(TOPIC_LABEL[t] || t)}</a>`).join(", ");
+  const tags = (s.tags || []).map((t) => `<a href="#t/${t}">${esc(TOPIC_LABEL[t] || t)}</a>`).join(", ");
+  const saved = Boolean(user.saved[s.id]);
+  const comments = s.comments || [];
   const sub = [
     viaBits(s).join(pipe),
     `<span title="${esc(s.t.toLocaleString())}">${ago(s.t)}</span>`,
     tags,
-    s.comments.length ? `<button type="button" class="discuss" aria-expanded="false" data-id="${s.id}">discuss (${s.comments.length})</button>` : "",
+    comments.length ? `<button type="button" class="linkish discuss" aria-expanded="false" data-id="${s.id}">discuss (${comments.length})</button>` : "",
+    `<button type="button" class="linkish save${saved ? " on" : ""}" aria-pressed="${saved}" data-save="${s.id}">${saved ? "saved ★" : "save"}</button>`,
   ].filter(Boolean).join(pipe);
-  const comments = s.comments.length ? `<div class="comments" id="c-${s.id}" hidden>${s.comments.map((c) => `
+  const box = comments.length ? `<div class="comments" id="c-${s.id}" hidden>${comments.map((c) => `
       <div class="c"><div class="who">${esc(c.author || "anon")} on <a href="${esc(c.thread)}" target="_blank" rel="noopener">${PLATFORM[c.platform] || c.platform}</a>${c.published ? " · " + ago(new Date(c.published)) : ""}</div>
       <p>${esc(c.text)}</p></div>`).join("")}</div>` : "";
   return `<li><span class="n">${n}.</span><div>
     <div class="title"><a class="t" href="${esc(s.url)}" target="_blank" rel="noopener"${s.text ? ` title="${esc(s.text)}"` : ""}>${esc(s.title)}</a>${s.domain ? ` <a class="d" href="#site/${esc(s.domain)}">(${esc(s.domain)})</a>` : ""}${s.official ? '<span class="badge">official</span>' : ""}</div>
-    <div class="sub">${sub}</div>${comments}</div></li>`;
-}
-
-function route() {
-  const h = decodeURIComponent(location.hash.slice(1)) || "top";
-  const [view, arg, page] = h.split("/");
-  return { view, arg, page: Math.max(1, parseInt(view === "top" || view === "new" ? arg : page, 10) || 1) };
+    <div class="sub">${sub}</div>${box}</div></li>`;
 }
 
 function navHTML(r) {
-  const items = [["new", "new"], ["past", "past"], ...DATA.topics.map((t) => ["t/" + t, TOPIC_LABEL[t] || t])];
-  return items.map(([href, label]) => {
-    const cur = (href === r.view) || (r.view === "t" && href === "t/" + r.arg);
-    return `<a href="#${href}"${cur ? ' aria-current="page"' : ""}>${esc(label)}</a>`;
-  }).join('<span class="sep">|</span>');
+  const nSaved = Object.keys(user.saved).length;
+  const items = [["new", "new"], ["past", "past"], ["saved", nSaved ? `saved (${nSaved})` : "saved"],
+    ...DATA.topics.map((t) => ["t/" + t, TOPIC_LABEL[t] || t])];
+  const cur = r.view + (r.arg && (r.view === "t" || r.view === "u") ? "/" + r.arg : "");
+  const html = items.map(([href, label]) => `<a href="#${href}"${cur === href ? ' aria-current="page"' : ""}>${esc(label)}</a>`);
+  const mine = user.topics.map((t) => {
+    const href = "u/" + slug(t.name);
+    return `<a class="mine" href="#${href}" title="${esc(t.query)}"${cur === href ? ' aria-current="page"' : ""}>${esc(t.name)}</a>`;
+  });
+  return html.join('<span class="sep">|</span>') + (mine.length ? '<span class="sep mine-sep">||</span>' + mine.join('<span class="sep">|</span>') : "");
 }
 
 function render() {
   const r = route();
-  const q = $("#q").value.trim().toLowerCase();
   $("#nav").innerHTML = navHTML(r);
   $("#brand").toggleAttribute("aria-current", r.view === "top");
-  let list = stories, intro = "", base = r.view;
+  if (document.activeElement !== $("#q")) $("#q").value = r.q;
+
+  let list = stories, intro = "", introClass = "intro";
   const days = [...new Set(stories.map((s) => dayKey(s.t)))].sort().reverse();
+  const topic = r.view === "u" ? user.topics.find((t) => slug(t.name) === r.arg) : null;
 
   if (r.view === "new") {
     list = [...stories].sort((a, b) => b.t - a.t);
@@ -213,46 +331,116 @@ function render() {
   } else if (r.view === "past") {
     const day = days.includes(r.arg) ? r.arg : days[1] || days[0];
     const i = days.indexOf(day);
+    r.arg = day;
     list = stories.filter((s) => dayKey(s.t) === day).sort((a, b) => b.heat - a.heat);
-    intro =
-      (days[i + 1] ? `<a href="#past/${days[i + 1]}">« ${esc(dayLabel(days[i + 1]))}</a> · ` : "") +
+    introClass = "daynav";
+    intro = (days[i + 1] ? `<a href="${link(r, { arg: days[i + 1], page: 1 })}">« ${esc(dayLabel(days[i + 1]))}</a> · ` : "") +
       `Stories from <b>${esc(dayLabel(day))}</b>, ranked by how far they spread` +
-      (i > 0 ? ` · <a href="#past/${days[i - 1]}">${esc(dayLabel(days[i - 1]))} »</a>` : "");
-    base = "past/" + day;
+      (i > 0 ? ` · <a href="${link(r, { arg: days[i - 1], page: 1 })}">${esc(dayLabel(days[i - 1]))} »</a>` : "");
+  } else if (r.view === "saved") {
+    list = Object.values(user.saved).sort((a, b) => String(b.saved_at).localeCompare(String(a.saved_at)))
+      .map((snap) => byId.get(snap.id) || { ...snap, t: new Date(snap.published), comments: [] });
+    intro = list.length ? "Stories you saved, newest save first. They stay here after they drop off the front page."
+      : "Nothing saved yet. Use <b>save</b> under any story.";
   } else if (r.view === "t") {
     list = stories.filter((s) => s.tags.includes(r.arg));
     intro = `Top stories tagged <b>${esc(TOPIC_LABEL[r.arg] || r.arg)}</b>.`;
-    base = "t/" + r.arg;
+  } else if (r.view === "u") {
+    if (topic) {
+      const m = matcher(topic.query);
+      list = m ? stories.filter(m) : [];
+      intro = `Your topic <b>${esc(topic.name)}</b>: stories matching <code>${esc(topic.query)}</code>. ` +
+        `<button type="button" class="linkish" id="edit-topic">edit</button> · <button type="button" class="linkish" id="unpin">unpin</button>`;
+    } else {
+      list = [];
+      intro = "That pinned topic doesn't exist (any more).";
+    }
   } else if (r.view === "site") {
-    list = [...stories].filter((s) => s.domain === r.arg).sort((a, b) => b.t - a.t);
+    list = stories.filter((s) => s.domain === r.arg).sort((a, b) => b.t - a.t);
     intro = `Stories from <b>${esc(r.arg)}</b>.`;
-    base = "site/" + r.arg;
   } else {
     intro = esc(DATA.tagline) + ".";
   }
-  if (q) {
-    list = list.filter((s) => (s.title + " " + s.domain + " " + s.via.map((v) => v.source).join(" ")).toLowerCase().includes(q));
-    intro = `${list.length} match${list.length === 1 ? "" : "es"} for <b>${esc(q)}</b>.`;
+
+  const m = matcher(r.q);
+  if (m) {
+    list = list.filter(m);
+    const pinned = user.topics.some((t) => t.query.toLowerCase() === r.q.toLowerCase());
+    intro += `<div class="matches">${list.length} match${list.length === 1 ? "" : "es"} for <b>${esc(r.q)}</b>` +
+      (r.view === "top" ? "" : " in this view") +
+      (pinned ? " · pinned" : ` · <button type="button" class="linkish" id="pin">pin as topic</button>`) +
+      ` · <a href="${link(r, { q: "", page: 1 })}">clear</a></div>`;
   }
+  intro += `<form class="pinform" id="pinform" hidden><label>Topic name <input name="tname" maxlength="40" required></label>
+    <label>matches <input name="tquery" maxlength="200" required></label> <button type="submit">pin</button>
+    <button type="button" class="linkish" id="pin-cancel">cancel</button></form>`;
+
   const start = (r.page - 1) * PER_PAGE;
   const pageList = list.slice(start, start + PER_PAGE);
-  const moreHref = `#${base}/${r.page + 1}`;
   $("#main").innerHTML =
-    `<div class="${r.view === "past" && !q ? "daynav" : "intro"}">${intro}</div>` +
+    `<div class="${introClass}">${intro}</div>` +
     (pageList.length ? `<ol class="stories">${pageList.map((s, i) => row(s, start + i + 1)).join("")}</ol>`
-      : `<div class="empty">Nothing here yet.</div>`) +
-    (list.length > start + PER_PAGE ? `<div class="more"><a href="${moreHref}">More</a></div>` : "");
-  document.title = r.view === "top" && !q ? DATA.title : `${DATA.title} · ${r.view === "t" ? TOPIC_LABEL[r.arg] || r.arg : r.view}`;
+      : `<div class="empty">${r.q ? "No stories match." : "Nothing here yet."}</div>`) +
+    (list.length > start + PER_PAGE ? `<div class="more"><a href="${link(r, { page: r.page + 1 })}">More</a></div>` : "");
+  document.title = r.view === "top" && !r.q ? DATA.title
+    : `${DATA.title} · ${topic ? topic.name : r.view === "t" ? TOPIC_LABEL[r.arg] || r.arg : r.view}${r.q ? " · " + r.q : ""}`;
+  $("#note").innerHTML = user.error ? `<span class="bad">${esc(user.error)}</span>`
+    : user.mode === "local" ? "Saved stories and pinned topics are kept in this browser only (the page isn't being served by the AI Daily server)." : "";
+}
+
+function openPinForm(name, query) {
+  const f = $("#pinform");
+  f.hidden = false;
+  f.elements.tname.value = name;
+  f.elements.tquery.value = query;
+  f.elements.tname.focus();
+  f.elements.tname.select();
 }
 
 document.addEventListener("click", (e) => {
-  const b = e.target.closest("button.discuss");
-  if (!b) return;
-  const box = document.getElementById("c-" + b.dataset.id);
-  box.hidden = !box.hidden;
-  b.setAttribute("aria-expanded", String(!box.hidden));
+  const d = e.target.closest("button.discuss");
+  if (d) {
+    const box = document.getElementById("c-" + d.dataset.id);
+    box.hidden = !box.hidden;
+    d.setAttribute("aria-expanded", String(!box.hidden));
+    return;
+  }
+  const s = e.target.closest("button[data-save]");
+  if (s) { toggleSave(s.dataset.save); return; }
+  const r = route();
+  if (e.target.id === "pin") openPinForm(r.q.replace(/["|]/g, " ").trim().slice(0, 40), r.q);
+  if (e.target.id === "pin-cancel") $("#pinform").hidden = true;
+  const topic = user.topics.find((t) => slug(t.name) === r.arg);
+  if (e.target.id === "edit-topic" && topic) openPinForm(topic.name, topic.query);
+  if (e.target.id === "unpin" && topic) {
+    setTopics(user.topics.filter((t) => t !== topic));
+    location.hash = "#top";
+  }
 });
-$("#q").addEventListener("input", render);
+
+document.addEventListener("submit", (e) => {
+  if (e.target.id !== "pinform") return;
+  e.preventDefault();
+  const name = e.target.elements.tname.value.trim().slice(0, 40), query = e.target.elements.tquery.value.trim().slice(0, 200);
+  if (!name || !query) return;
+  const r = route();
+  const editing = r.view === "u" ? user.topics.find((t) => slug(t.name) === r.arg) : null;
+  const next = user.topics.filter((t) => t !== editing && slug(t.name) !== slug(name));
+  next.push({ name, query });
+  setTopics(next);
+  location.hash = "#u/" + encodeURIComponent(slug(name));
+});
+
+$("#q").addEventListener("input", () => {
+  history.replaceState(null, "", link(route(), { q: $("#q").value.trim(), page: 1 }));
+  render();
+});
+addEventListener("keydown", (e) => {
+  if (e.key === "/" && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) {
+    e.preventDefault();
+    $("#q").focus();
+  }
+});
 addEventListener("hashchange", () => { render(); scrollTo(0, 0); });
 
 /* theme: follows the OS unless toggled; the choice is remembered per browser */
@@ -276,6 +464,11 @@ $("#updated").textContent = "updated " + generated.toLocaleString(undefined, { w
       `<tr><td>${esc(x.name)}</td><td class="num">${x.items}</td><td>${x.status === "ok" ? "ok" : `<span class="bad" title="${esc(x.error)}">error</span>`}</td></tr>`).join("")}</table></details>`;
 }
 render();
+loadUser().then(render);
+// Pick up saves made on another device whenever this tab comes back into view.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && user.mode === "server") loadUser().then(render);
+});
 </script>
 </body>
 </html>
