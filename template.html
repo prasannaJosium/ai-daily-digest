@@ -53,6 +53,10 @@ nav .sep { padding: 0 4px; }
 .daynav { padding: 10px 10px 2px 38px; font-size: 12px; color: var(--sub); }
 .daynav b { color: var(--ink); }
 .daynav a { color: var(--ink); }
+.days { margin-bottom: 6px; line-height: 1.9; }
+.days a, .days b { white-space: nowrap; }
+.days b { color: var(--bar-ink); background: var(--mark); padding: 1px 5px; border-radius: 2px; font-weight: normal; }
+.days .sep { padding: 0 5px; color: var(--sub); }
 ol.stories { list-style: none; margin: 0; padding: 8px 10px 0 0; }
 ol.stories > li { display: grid; grid-template-columns: 32px 1fr; padding: 0 0 7px; }
 .n { color: var(--sub); text-align: right; padding-right: 6px; }
@@ -336,7 +340,13 @@ function render() {
     r.arg = day;
     list = stories.filter((s) => dayKey(s.t) === day).sort((a, b) => b.heat - a.heat);
     introClass = "daynav";
-    intro = (days[i + 1] ? `<a href="${link(r, { arg: days[i + 1], page: 1 })}">« ${esc(dayLabel(days[i + 1]))}</a> · ` : "") +
+    intro = `<div class="days">${days.map((k) => {
+      const d = new Date(k + "T12:00");
+      const label = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      const title = d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+      return k === day ? `<b title="${esc(title)}">${esc(label)}</b>`
+        : `<a href="${link(r, { arg: k, page: 1 })}" title="${esc(title)}">${esc(label)}</a>`;
+    }).join('<span class="sep">·</span>')}</div>` + (days[i + 1] ? `<a href="${link(r, { arg: days[i + 1], page: 1 })}">« ${esc(dayLabel(days[i + 1]))}</a> · ` : "") +
       `Stories from <b>${esc(dayLabel(day))}</b>, ranked by how far they spread` +
       (i > 0 ? ` · <a href="${link(r, { arg: days[i - 1], page: 1 })}">${esc(dayLabel(days[i - 1]))} »</a>` : "");
   } else if (r.view === "saved") {

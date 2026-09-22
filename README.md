@@ -52,7 +52,7 @@ The Windows scheduled task (`install-task.ps1`, above) is the alternative for ru
 - **top**: the day's front page. Stories from the last 12 hours count as "today" with no decay; after
   that a story's rank halves every 24 hours.
 - **new**: newest first.
-- **past**: one day at a time, ranked by buzz, with links to the previous and next day (14 days kept).
+- **past**: one day at a time, ranked by buzz. A row of day links at the top jumps to any of the last 14 days.
 - **launches · llms · agents · research · tools · open source · industry · policy**: topic tabs.
 - Each story's subline shows where it appeared (HN points and comments, its position in Reddit's
   top-of-day, Lobsters, HF upvotes, GitHub stars, which labs or outlets published it). Each of those
@@ -107,7 +107,9 @@ Set `GITHUB_TOKEN` in the environment if you hit GitHub's anonymous rate limit.
 
 ## Notes
 
-- Data accumulates in `data/ai-daily.db` (SQLite): one row per post per platform, plus top comments.
+- Data lives in `data/ai-daily.db` (SQLite): one row per post per platform, plus top comments. After each
+  collection, posts older than `window_days` (14) and their comments are deleted (never on `--render`).
+  Saved stories are separate (`data/user.json`) and are never deleted by this.
 - The first run backfills 14 days of HN; other sources only have what their feeds currently hold,
   so the **past** view fills in over the following days.
 - This started as Jev Daily (a TypeSafe/Jev-only tracker); the old database is left in `data/digest.db`.

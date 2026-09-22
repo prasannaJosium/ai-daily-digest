@@ -252,6 +252,23 @@ class Store:
                values (:id, :thread_url, :author, :text, :position, :published)
                on conflict(id) do update set position = excluded.position, text = excluded.text""", c)
 
+    def evict(self, before: str) -> dict:
+        """Delete posts older than `before` (ISO), their comments and old run records.
+
+        seen_pages is kept on purpose: it stops sitemap sources from rediscovering old posts.
+        Saved stories live in data/user.json (server.py) and are not affected.
+        """
+        posts = self.db.execute(
+            "delete from items where coalesce(published, first_seen) < ?", (before,)).rowcount
+        comments = self.db.execute(
+            """delete from comments where thread_url not in
+               (select discussion_url from items where discussion_url is not null)""").rowcount
+        self.db.execute("delete from runs where started < ?", (before,))
+        self.db.commit()
+        if posts:
+            self.db.execute("vacuum")
+        return {"posts": posts, "comments": comments}
+
     def seen(self, source: str) -> set[str]:
         return {r[0] for r in self.db.execute("select url from seen_pages where source = ?", (source,))}
 
@@ -622,6 +639,10 @@ def main() -> int:
         store.db.execute("insert or replace into runs values (?, ?, ?)",
                          (NOW_ISO, iso(datetime.now(timezone.utc)), json.dumps(health)))
         store.db.commit()
+        # Keep only the window the page shows (window_days); only after a collection, never on --render.
+        cutoff = iso(NOW - timedelta(days=cfg.get("window_days", 14)))
+        gone = store.evict(cutoff)
+        print(f"evicted {gone['posts']} posts and {gone['comments']} comments older than {cutoff}")
     render(cfg, store, health)
     errors = [h["name"] for h in (health or []) if h["status"] != "ok"]
     if errors:
