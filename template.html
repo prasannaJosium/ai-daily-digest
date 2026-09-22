@@ -42,6 +42,10 @@ nav a[aria-current="page"] { color: #fff; }
 nav .sep { padding: 0 4px; }
 .right { margin-left: auto; font-size: 12px; white-space: nowrap; display: flex; gap: 10px; align-items: center; }
 .right button { font: inherit; background: none; border: 0; color: inherit; cursor: pointer; padding: 0; }
+#q { font: inherit; font-size: 12px; width: 15em; padding: 2px 6px; border: 1px solid rgba(0,0,0,.25); border-radius: 2px;
+  background: var(--input); color: var(--ink); }
+#q::placeholder { color: var(--sub); }
+#q:focus { outline: 2px solid #fff; outline-offset: 0; }
 
 /* list */
 .intro { color: var(--sub); font-size: 12px; padding: 10px 10px 2px 38px; }
@@ -76,9 +80,6 @@ ol.stories > li { display: grid; grid-template-columns: 32px 1fr; padding: 0 0 7
 /* footer */
 footer { border-top: 2px solid var(--rule); margin: 18px 0 0; padding: 12px 10px; text-align: center; font-size: 11.5px;
   color: var(--sub); }
-footer label { color: var(--sub); }
-footer input { font: inherit; font-size: 12px; background: var(--input); color: var(--ink); border: 1px solid var(--line);
-  padding: 2px 4px; width: 220px; max-width: 70vw; }
 footer .health { margin-top: 10px; line-height: 1.6; }
 footer .bad { color: #c2410c; }
 footer details { margin-top: 6px; display: inline-block; text-align: left; }
@@ -105,7 +106,8 @@ footer .note { margin-top: 6px; }
 @media (max-width: 750px) {
   .wrap { margin: 0; }
   header { padding: 6px 16px; }
-  .right { margin-left: 0; width: 100%; }
+  .right { margin-left: 0; width: 100%; flex-wrap: wrap; }
+  #q { order: -1; flex: 1 1 100%; font-size: 15px; padding: 6px 8px; }
   ol.stories { padding-right: 16px; }
   ol.stories > li { grid-template-columns: 36px 1fr; padding-bottom: 10px; }
   .title { font-size: 15px; }
@@ -121,11 +123,11 @@ footer .note { margin-top: 6px; }
     <span class="logo" aria-hidden="true">A</span>
     <a class="brand" href="#top" id="brand">AI Daily</a>
     <nav id="nav" aria-label="Views"></nav>
-    <span class="right"><span id="updated"></span><button id="theme" type="button" aria-label="Toggle dark mode">◐</button></span>
+    <span class="right"><input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Search  ( / )"
+      aria-label="Search stories: words, &quot;phrases&quot;, a|b" title="Words must all match · &quot;exact phrase&quot; · a|b matches either · searches the current tab"><span id="updated"></span><button id="theme" type="button" aria-label="Toggle dark mode">◐</button></span>
   </header>
   <main id="main"></main>
   <footer>
-    <label>Search: <input id="q" type="search" autocomplete="off" placeholder="words, &quot;phrases&quot;, a|b   ( / )"></label>
     <div class="note" id="note"></div>
     <div class="health" id="health"></div>
   </footer>

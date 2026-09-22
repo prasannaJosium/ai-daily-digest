@@ -58,7 +58,7 @@ The Windows scheduled task (`install-task.ps1`, above) is the alternative for ru
   top-of-day, Lobsters, HF upvotes, GitHub stars, which labs or outlets published it). Each of those
   links to that platform's thread. **discuss** expands the top comments from the biggest HN and Reddit threads.
 - **save** under any story keeps it in the **saved** tab, even after it drops out of the 14-day window.
-- **Search** (footer box, or press `/`) filters whatever view you're on and is part of the URL, so every
+- **Search** (the box in the orange bar, or press `/`) filters whatever view you're on and is part of the URL, so every
   search can be bookmarked: `#q/mcp`, `#t/agents/q/mcp`, `#past/2026-09-20/q/qwen`. Words must all match
   (at the start of a word, so `rag` doesn't match "storage"), `"quoted phrases"` match exactly, and
   `qwen|deepseek` matches either. It looks at titles, summaries, sites, sources and tags.
